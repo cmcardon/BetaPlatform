@@ -15,6 +15,17 @@ function matchValue(pattern, source) {
   return match ? match[1] : "";
 }
 
+function firstMatch(patterns, source) {
+  for (const pattern of patterns) {
+    const value = matchValue(pattern, source);
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
 export default async (request) => {
   if (request.method === "OPTIONS") {
     return json(204, {});
@@ -58,10 +69,22 @@ export default async (request) => {
     const oembed = await oembedResponse.json();
     const watchHtml = await watchResponse.text();
 
-    const uploadDate = matchValue(/uploadDate":"([0-9-]+)"/, watchHtml)
-      || matchValue(/dateText":\{"simpleText":"([^"]+)"/, watchHtml);
-    const lengthSeconds = Number(matchValue(/lengthSeconds":"([0-9]+)"/, watchHtml));
-    const approxDurationMs = Number(matchValue(/approxDurationMs":"([0-9]+)"/, watchHtml));
+    const uploadDate = firstMatch([
+      /uploadDate":"([0-9-]+)"/,
+      /uploadDate\\":\\"([0-9-]+)\\"/,
+      /dateText":\{"simpleText":"([^"]+)"/,
+      /dateText\\":\{\\?"simpleText\\?":\\"([^"]+)\\"/
+    ], watchHtml);
+    const lengthSeconds = Number(firstMatch([
+      /lengthSeconds":"([0-9]+)"/,
+      /lengthSeconds\\":\\"([0-9]+)\\"/,
+      /"lengthSeconds":"([0-9]+)"/
+    ], watchHtml));
+    const approxDurationMs = Number(firstMatch([
+      /approxDurationMs":"([0-9]+)"/,
+      /approxDurationMs\\":\\"([0-9]+)\\"/,
+      /"approxDurationMs":"([0-9]+)"/
+    ], watchHtml));
 
     return json(200, {
       videoId,
