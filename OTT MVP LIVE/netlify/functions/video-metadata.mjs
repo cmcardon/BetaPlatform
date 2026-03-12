@@ -68,6 +68,7 @@ export default async (request) => {
       videoId,
       title: String(oembed?.title || "").trim(),
       authorName: String(oembed?.author_name || "").trim(),
+      authorHandle: String(oembed?.author_url || "").split("@")[1] || "",
       thumbnailUrl: String(oembed?.thumbnail_url || "").trim(),
       uploadDate: uploadDate || null,
       runtimeSeconds: Number.isFinite(lengthSeconds) && lengthSeconds > 0

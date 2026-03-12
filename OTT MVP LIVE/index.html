@@ -3052,6 +3052,23 @@
             { match: 'Nicole Shanahan', art: 'show-art/Nicole_Shanahan_Show_Art.jpg' },
             { match: 'Strange Encounters', art: 'show-art/Strange_Encounters_Show_Art_.jpeg' }
         ];
+        const blazeShowByChannel = {
+            'John Doyle': 'The John Doyle Show',
+            'Allie Beth Stuckey': 'Relatable with Allie Beth Stuckey',
+            'Jason Whitlock': 'Fearless with Jason Whitlock',
+            'realjasonwhitlock': 'Fearless with Jason Whitlock',
+            'Glenn Beck': 'The Glenn Beck Program',
+            'Liz Wheeler': 'The Liz Wheeler Show',
+            'Sara Gonzales': 'Sara Gonzales Unfiltered',
+            'Stu Burguiere': 'Stu Does America',
+            'Pat Gray': 'Pat Gray Unleashed',
+            'Steve Deace': 'The Steve Deace Show',
+            'Auron MacIntyre': 'The Auron MacIntyre Show',
+            'Rufo and Lomez': 'Rufo & Lomez',
+            'Nicole Shanahan': 'Back to the People with Nicole Shanahan',
+            'BlazeTV': 'BlazeTV',
+            'Blaze Media': 'BlazeTV'
+        };
         let liveProgrammingSchedule = [];
         let liveScheduleSource = 'fallback';
         let liveScheduleLoaded = false;
@@ -3139,7 +3156,7 @@
         }
 
         function formatUploadDate(value) {
-            if (!value) return 'Date unavailable';
+            if (!value) return 'New';
 
             if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) {
                 const date = new Date(`${value}T12:00:00`);
@@ -3161,7 +3178,7 @@
                 });
             }
 
-            return value;
+            return 'New';
         }
 
         function formatRuntime(seconds) {
@@ -3315,6 +3332,28 @@
             return titleElement ? titleElement.textContent.trim() : 'BlazeTV';
         }
 
+        function resolveBlazeShowName(metadata, card) {
+            const candidates = [
+                metadata?.authorName,
+                metadata?.authorHandle,
+                extractHostFromCard(card),
+                extractOriginalCardTitle(card)
+            ].filter(Boolean);
+
+            for (const candidate of candidates) {
+                if (blazeShowByChannel[candidate]) {
+                    return blazeShowByChannel[candidate];
+                }
+
+                const titleMatch = showHostMatches.find(item => candidate.includes(item.host) || candidate.includes(item.match));
+                if (titleMatch) {
+                    return titleMatch.match;
+                }
+            }
+
+            return extractOriginalCardTitle(card);
+        }
+
         function prepareCarouselCards(root = document) {
             const cards = Array.from(root.querySelectorAll('.content-card:not(.live-card)'));
 
@@ -3334,7 +3373,7 @@
                     card.dataset.seriesTitle = titleElement.textContent.trim();
                 }
 
-                seriesElement.textContent = extractOriginalCardTitle(card);
+                seriesElement.textContent = resolveBlazeShowName(null, card);
 
                 if (!metaElement.dataset.prepared) {
                     metaElement.innerHTML = `
@@ -3371,7 +3410,8 @@
                     titleElement.insertAdjacentElement('beforebegin', seriesElement);
                 }
 
-                seriesElement.textContent = extractOriginalCardTitle(card);
+                const blazeShowName = resolveBlazeShowName(metadata, card);
+                seriesElement.textContent = blazeShowName;
 
                 const metaElement = card.querySelector('.card-meta');
                 if (metaElement) {
@@ -3385,7 +3425,7 @@
                 const matchingHero = heroVideos.find(video => video.id === videoId);
                 if (matchingHero) {
                     if (metadata.title) matchingHero.title = metadata.title;
-                    if (card.dataset.seriesTitle) matchingHero.host = card.dataset.seriesTitle;
+                    matchingHero.host = blazeShowName;
                 }
             });
         }
