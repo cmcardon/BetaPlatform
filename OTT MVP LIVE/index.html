@@ -3260,6 +3260,8 @@
                     liveVideo.pause();
                     liveVideo.muted = true; // Mute it too
                 }
+
+                stopLiveChatPolling();
             }
             
             // Initialize video player when entering live page
@@ -3267,6 +3269,7 @@
                 // Set content ID for live stream
                 currentContentId = 'live_stream_main';
                 loadCommentsForVideo(currentContentId);
+                startLiveChatPolling();
                 
                 // Load poll if one is linked to live stream
                 loadVideoPoll(currentContentId, '#livePollSection');
@@ -3294,6 +3297,7 @@
         let currentContentId = null; // Track which content we're viewing
         let selectedSuperChat = 0;
         let blockedUsers = []; // List of blocked user IDs
+        let liveChatRefreshInterval = null;
         document.querySelectorAll('.super-chat-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.super-chat-btn').forEach(b => b.classList.remove('active'));
@@ -3310,6 +3314,37 @@
             return `blazetv_comments_${contentId}`;
         }
 
+        function isLiveContent(contentId) {
+            return typeof contentId === 'string' && contentId.startsWith('live_');
+        }
+
+        async function fetchCommentsFromApi(contentId) {
+            const response = await fetch(`/.netlify/functions/comments?contentId=${encodeURIComponent(contentId)}`);
+            if (!response.ok) {
+                throw new Error(`Failed to load comments: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return Array.isArray(data.comments) ? data.comments : [];
+        }
+
+        async function saveCommentToApi(contentId, comment) {
+            const response = await fetch(`/.netlify/functions/comments?contentId=${encodeURIComponent(contentId)}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(comment)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to save comment: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return Array.isArray(data.comments) ? data.comments : [];
+        }
+
         function loadCommentsForContent(contentId) {
             const comments = JSON.parse(localStorage.getItem(getCommentsKey(contentId)) || '[]');
             return comments;
@@ -3320,6 +3355,23 @@
             comments.push(comment);
             localStorage.setItem(getCommentsKey(contentId), JSON.stringify(comments));
             return comments;
+        }
+
+        function startLiveChatPolling() {
+            stopLiveChatPolling();
+
+            liveChatRefreshInterval = setInterval(() => {
+                if (currentContentId && isLiveContent(currentContentId) && document.getElementById('livePage')?.classList.contains('active')) {
+                    loadCommentsForVideo(currentContentId);
+                }
+            }, 10000);
+        }
+
+        function stopLiveChatPolling() {
+            if (liveChatRefreshInterval) {
+                clearInterval(liveChatRefreshInterval);
+                liveChatRefreshInterval = null;
+            }
         }
 
         function sortCommentsByTip(comments) {
@@ -3338,7 +3390,7 @@
         }
 
         // Load comments for specific video/stream
-        function loadCommentsForVideo(contentId) {
+        async function loadCommentsForVideo(contentId) {
             if (!contentId) {
                 console.warn('No content ID provided');
                 return;
@@ -3350,7 +3402,9 @@
             
             try {
                 // Get comments for this specific content
-                const comments = loadCommentsForContent(contentId);
+                const comments = isLiveContent(contentId)
+                    ? await fetchCommentsFromApi(contentId)
+                    : loadCommentsForContent(contentId);
                 console.log('Found', comments.length, 'comments');
                 
                 // Determine which container to use
@@ -3394,6 +3448,18 @@
                 }
             } catch (error) {
                 console.error('❌ Error loading comments:', error);
+
+                if (isLiveContent(contentId)) {
+                    console.log('Falling back to local comments for live chat');
+                    const fallbackComments = loadCommentsForContent(contentId);
+                    if (fallbackComments.length > 0) {
+                        const container = document.querySelector('#chatMessages');
+                        if (container) {
+                            container.innerHTML = '';
+                            sortCommentsByTip(fallbackComments).forEach(comment => displayComment(comment, container));
+                        }
+                    }
+                }
             }
         }
 
@@ -3493,7 +3559,7 @@
             return Math.floor(seconds / 86400) + ' days ago';
         }
 
-        function sendMessage() {
+        async function sendMessage() {
             const input = document.getElementById('chatInput');
             const message = input.value.trim();
             if (!message) return;
@@ -3530,17 +3596,29 @@
             
             console.log('Created comment:', comment);
             
-            // Save to localStorage for this specific content
-            const comments = loadCommentsForContent(currentContentId);
-            comments.push(comment);
-            const storageKey = getCommentsKey(currentContentId);
-            localStorage.setItem(storageKey, JSON.stringify(comments));
-            
-            console.log('Saved to localStorage key:', storageKey);
-            console.log('Total comments:', comments.length);
-            
-            // Reload all comments (so they're sorted by tip and history shows)
-            loadCommentsForVideo(currentContentId);
+            try {
+                let comments;
+
+                if (isLiveContent(currentContentId)) {
+                    comments = await saveCommentToApi(currentContentId, comment);
+                    console.log('Saved to shared live chat store');
+                } else {
+                    comments = loadCommentsForContent(currentContentId);
+                    comments.push(comment);
+                    const storageKey = getCommentsKey(currentContentId);
+                    localStorage.setItem(storageKey, JSON.stringify(comments));
+                    console.log('Saved to localStorage key:', storageKey);
+                }
+
+                console.log('Total comments:', comments.length);
+
+                // Reload all comments (so they're sorted by tip and history shows)
+                await loadCommentsForVideo(currentContentId);
+            } catch (error) {
+                console.error('Failed to send message:', error);
+                alert('We could not send your message right now. Please try again.');
+                return;
+            }
             
             input.value = '';
             
