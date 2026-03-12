@@ -1706,11 +1706,12 @@
                     Watch BlazeTV's live stream featuring your favorite hosts. Join the conversation in the live chat!
                 </p>
                 <div class="video-actions">
-                    <button class="action-btn">👍 Like</button>
-                    <button class="action-btn">💾 Save</button>
-                    <button class="action-btn">↗ Share</button>
+                    <button class="action-btn" onclick="likeCurrentContent('live_stream_main')">👍 Like</button>
+                    <button class="action-btn" id="liveSaveBtn" onclick="toggleWatchlistItem('live_stream_main', 'BlazeTV Live Stream', 'BlazeTV', 'live')">💾 Save</button>
+                    <button class="action-btn" onclick="shareCurrentContent('BlazeTV Live Stream')">↗ Share</button>
                     <button class="action-btn">⚙ Quality</button>
                 </div>
+                <div id="liveScheduleSection" style="margin-top: 1.5rem; background: var(--bg-secondary); padding: 1.25rem; border-radius: 12px;"></div>
             </div>
         </div>
 
@@ -1719,8 +1720,13 @@
             <div id="livePollSection" style="margin-bottom: 1rem;"></div>
             
             <div class="chat-header">
-                <h3 class="chat-title">Live Chat</h3>
-                <p class="chat-subtitle">Join the conversation</p>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                    <div>
+                        <h3 class="chat-title">Live Chat</h3>
+                        <p class="chat-subtitle">Join the conversation</p>
+                    </div>
+                    <button class="action-btn" style="padding: 0.55rem 0.85rem; font-size: 0.85rem;" id="liveChatToggleBtn" onclick="toggleCommentVisibility('live')">🙈 Hide Chat</button>
+                </div>
             </div>
             <div class="chat-messages" id="chatMessages">
                 <div class="chat-message super-chat">
@@ -1744,6 +1750,9 @@
                         <div class="chat-text">This is exactly what we need to hear right now! 🔥</div>
                     </div>
                 </div>
+            </div>
+            <div id="liveChatHiddenState" style="display: none; padding: 1rem; color: var(--text-secondary); text-align: center; border-top: 1px solid var(--bg-tertiary);">
+                Live chat is hidden for your session.
             </div>
             <div class="chat-input-container">
                 <div class="super-chat-options">
@@ -1787,9 +1796,9 @@
                                 <span id="vodDate">Loading...</span>
                             </div>
                             <div style="display: flex; gap: 1rem;">
-                                <button class="action-btn">👍 Like</button>
-                                <button class="action-btn">💾 Save</button>
-                                <button class="action-btn">↗ Share</button>
+                                <button class="action-btn" onclick="likeCurrentContent(currentContentId)">👍 Like</button>
+                                <button class="action-btn" id="vodSaveBtn" onclick="toggleCurrentVODWatchlist()">💾 Save</button>
+                                <button class="action-btn" onclick="shareCurrentContent(document.getElementById('vodTitle').textContent)">↗ Share</button>
                                 <button class="action-btn" onclick="createVideoPoll(currentContentId, document.getElementById('vodTitle').textContent)">📊 Create Poll</button>
                             </div>
                         </div>
@@ -1797,15 +1806,19 @@
 
                     <!-- Video Poll Section (if poll is linked to this video) -->
                     <div id="videoPollSection" style="margin-top: 2rem;"></div>
+                    <div id="recommendedVideosSection" style="margin-top: 2rem;"></div>
 
                     <!-- Comments Section -->
                     <div style="margin-top: 2rem;">
-                        <h2 style="font-family: 'Oswald', sans-serif; font-size: 1.5rem; margin-bottom: 1.5rem;">
-                            <span id="commentCount">156</span> Comments
-                        </h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+                            <h2 style="font-family: 'Oswald', sans-serif; font-size: 1.5rem;">
+                                <span id="commentCount">156</span> Comments
+                            </h2>
+                            <button class="action-btn" style="padding: 0.6rem 1rem; font-size: 0.85rem;" id="vodCommentsToggleBtn" onclick="toggleCommentVisibility('vod')">🙈 Hide Comments</button>
+                        </div>
                         
                         <!-- Comment Input with Tip Jar -->
-                        <div style="background: var(--bg-secondary); padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem;">
+                        <div id="vodCommentComposer" style="background: var(--bg-secondary); padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem;">
                             <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
                                 <div class="user-avatar" id="vodUserAvatar" style="flex-shrink: 0;">🔥</div>
                                 <textarea id="vodCommentInput" placeholder="Add a comment..." style="flex: 1; background: var(--bg-tertiary); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 1rem; color: var(--text-primary); font-family: inherit; resize: vertical; min-height: 80px;"></textarea>
@@ -1821,6 +1834,9 @@
                                 </div>
                                 <button onclick="postVODComment()" style="padding: 0.8rem 2rem; background: var(--accent-gradient); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">Post Comment</button>
                             </div>
+                        </div>
+                        <div id="vodCommentsHiddenState" style="display: none; background: var(--bg-secondary); padding: 1.25rem; border-radius: 12px; margin-bottom: 2rem; color: var(--text-secondary); text-align: center;">
+                            Comments are hidden for this session.
                         </div>
 
                         <!-- Comments List -->
@@ -1841,6 +1857,7 @@
                                         <div style="display: flex; gap: 1.5rem; margin-top: 1rem; font-size: 0.9rem;">
                                             <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">👍 245</button>
                                             <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;">Reply</button>
+                                            <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;" onclick="reportComment('John Doe', currentContentId)">Report</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1859,6 +1876,7 @@
                                         <div style="display: flex; gap: 1.5rem; margin-top: 1rem; font-size: 0.9rem;">
                                             <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">👍 42</button>
                                             <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;">Reply</button>
+                                            <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;" onclick="reportComment('Sarah Mitchell', currentContentId)">Report</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1877,6 +1895,7 @@
                                         <div style="display: flex; gap: 1.5rem; margin-top: 1rem; font-size: 0.9rem;">
                                             <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">👍 89</button>
                                             <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;">Reply</button>
+                                            <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;" onclick="reportComment('Mike K.', currentContentId)">Report</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1968,6 +1987,14 @@
         </section>
 
         <section class="content-section" style="padding-top: 2rem;">
+            <div class="content-row" id="watchlistRow" style="display: none;">
+                <div class="row-header">
+                    <h2 class="row-title accented">My Watchlist</h2>
+                    <a class="view-all" onclick="renderWatchlistRow()">Refresh ↻</a>
+                </div>
+                <div id="watchlistCarousel" class="carousel"></div>
+            </div>
+
             <div class="content-row">
                 <div class="row-header">
                     <h2 class="row-title">Live Now</h2>
@@ -2911,6 +2938,10 @@
             initLivePreview();
             fetchYouTubeTitle('G-TcuKoXzzI');
             startHeroRotation();
+            renderLiveSchedule();
+            renderWatchlistRow();
+            applyCommentVisibility('live');
+            applyCommentVisibility('vod');
         });
 
         // Hero carousel rotation
@@ -2923,8 +2954,169 @@
             { id: 'UN6W0aWGj1o', title: 'Sara Gonzales Unfiltered', host: 'Sara Gonzales' },
             { id: 'L0ZxJS9gM8E', title: 'The Liz Wheeler Show', host: 'Liz Wheeler' }
         ];
+
+        const liveProgrammingSchedule = [
+            { time: 'Now', title: 'BlazeTV Live Stream', host: 'BlazeTV', status: 'Live' },
+            { time: '6:00 PM', title: 'The Glenn Beck Program', host: 'Glenn Beck', status: 'Next' },
+            { time: '7:00 PM', title: 'Fearless with Jason Whitlock', host: 'Jason Whitlock', status: 'Upcoming' },
+            { time: '8:00 PM', title: 'The Liz Wheeler Show', host: 'Liz Wheeler', status: 'Upcoming' },
+            { time: '9:00 PM', title: 'Sara Gonzales Unfiltered', host: 'Sara Gonzales', status: 'Upcoming' }
+        ];
         
         let currentHeroIndex = 0;
+
+        function getWatchlistKey() {
+            return currentUser ? `blazetv_watchlist_${currentUser.email}` : 'blazetv_watchlist_guest';
+        }
+
+        function loadWatchlist() {
+            return JSON.parse(localStorage.getItem(getWatchlistKey()) || '[]');
+        }
+
+        function saveWatchlist(items) {
+            localStorage.setItem(getWatchlistKey(), JSON.stringify(items));
+        }
+
+        function isInWatchlist(contentId) {
+            return loadWatchlist().some(item => item.contentId === contentId);
+        }
+
+        function toggleWatchlistItem(contentId, title, host, type, videoId = '') {
+            const items = loadWatchlist();
+            const existingIndex = items.findIndex(item => item.contentId === contentId);
+
+            if (existingIndex >= 0) {
+                items.splice(existingIndex, 1);
+            } else {
+                items.unshift({
+                    contentId,
+                    title,
+                    host,
+                    type,
+                    videoId,
+                    savedAt: new Date().toISOString()
+                });
+            }
+
+            saveWatchlist(items.slice(0, 20));
+            updateSaveButtons();
+            renderWatchlistRow();
+        }
+
+        function toggleCurrentVODWatchlist() {
+            if (!currentContentId) return;
+
+            const contentId = currentContentId;
+            const videoId = contentId.replace('youtube_', '');
+            toggleWatchlistItem(
+                contentId,
+                document.getElementById('vodTitle').textContent || 'BlazeTV Video',
+                document.getElementById('vodHostTitle').textContent || 'BlazeTV',
+                'vod',
+                videoId
+            );
+        }
+
+        function updateSaveButtons() {
+            const liveSaveBtn = document.getElementById('liveSaveBtn');
+            if (liveSaveBtn) {
+                liveSaveBtn.textContent = isInWatchlist('live_stream_main') ? '✓ Saved' : '💾 Save';
+            }
+
+            const vodSaveBtn = document.getElementById('vodSaveBtn');
+            if (vodSaveBtn && currentContentId) {
+                vodSaveBtn.textContent = isInWatchlist(currentContentId) ? '✓ Saved' : '💾 Save';
+            }
+        }
+
+        function renderWatchlistRow() {
+            const row = document.getElementById('watchlistRow');
+            const container = document.getElementById('watchlistCarousel');
+            if (!row || !container) return;
+
+            const items = loadWatchlist();
+            if (items.length === 0) {
+                row.style.display = 'none';
+                container.innerHTML = '';
+                return;
+            }
+
+            row.style.display = 'block';
+            container.innerHTML = items.map(item => {
+                const clickHandler = item.type === 'live'
+                    ? `showPage('live')`
+                    : `playYouTubeVideo('${escapeHtml(item.videoId)}', '${escapeHtml(item.host)}')`;
+
+                return `
+                    <div class="content-card" onclick="${clickHandler}">
+                        <div class="content-card-image" style="background: linear-gradient(135deg, rgba(255,0,45,0.35), rgba(0,0,0,0.55)), url('${item.videoId ? `https://img.youtube.com/vi/${escapeHtml(item.videoId)}/maxresdefault.jpg` : 'https://img.youtube.com/vi/G-TcuKoXzzI/maxresdefault.jpg'}'); background-size: cover; background-position: center;"></div>
+                        <div class="content-card-overlay">
+                            <div class="card-title">${escapeHtml(item.title)}</div>
+                            <div class="card-meta">
+                                <span>${escapeHtml(item.host)}</span>
+                                <span>•</span>
+                                <span>${item.type === 'live' ? 'Live' : 'Saved'}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderLiveSchedule() {
+            const section = document.getElementById('liveScheduleSection');
+            if (!section) return;
+
+            const nowShowing = liveProgrammingSchedule[0];
+            const upcoming = liveProgrammingSchedule.slice(1).map(item => `
+                <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.65rem 0; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <div>
+                        <div style="font-weight: 600;">${escapeHtml(item.title)}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(item.host)}</div>
+                    </div>
+                    <div style="text-align: right; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">${escapeHtml(item.time)}</div>
+                </div>
+            `).join('');
+
+            section.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+                    <div>
+                        <div style="font-family: 'Oswald', sans-serif; font-size: 1.2rem;">Programming Guide</div>
+                        <div style="color: var(--text-secondary); font-size: 0.9rem;">What is live now and what is coming up next</div>
+                    </div>
+                    <div style="padding: 0.35rem 0.75rem; border-radius: 999px; background: rgba(255,0,45,0.14); color: var(--text-primary); font-size: 0.85rem;">
+                        Now: ${escapeHtml(nowShowing.title)}
+                    </div>
+                </div>
+                ${upcoming}
+            `;
+        }
+
+        function renderRecommendedVideos(currentVideoId = '') {
+            const section = document.getElementById('recommendedVideosSection');
+            if (!section) return;
+
+            const recommendations = heroVideos.filter(video => video.id !== currentVideoId).slice(0, 4);
+            section.innerHTML = `
+                <div style="background: var(--bg-secondary); padding: 1.5rem; border-radius: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                        <h3 style="font-family: 'Oswald', sans-serif; font-size: 1.35rem;">Recommended For You</h3>
+                        <span style="color: var(--text-secondary); font-size: 0.9rem;">Based on popular BlazeTV programming</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+                        ${recommendations.map(video => `
+                            <div onclick="playYouTubeVideo('${video.id}', '${video.host}')" style="background: var(--bg-tertiary); border-radius: 10px; overflow: hidden; cursor: pointer;">
+                                <div style="aspect-ratio: 16/9; background: url('https://img.youtube.com/vi/${video.id}/mqdefault.jpg'); background-size: cover; background-position: center;"></div>
+                                <div style="padding: 0.9rem;">
+                                    <div style="font-weight: 600; margin-bottom: 0.35rem;">${escapeHtml(video.title)}</div>
+                                    <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(video.host)}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
 
         function startHeroRotation() {
             setInterval(() => {
@@ -3072,6 +3264,9 @@
             
             // Load poll if one is linked to this video
             loadVideoPoll(currentContentId, '#videoPollSection');
+            renderRecommendedVideos(videoId);
+            updateSaveButtons();
+            applyCommentVisibility('vod');
             
             // Fetch video title and metadata from YouTube
             fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
@@ -3286,6 +3481,9 @@
                 currentContentId = 'live_stream_main';
                 loadCommentsForVideo(currentContentId);
                 startLiveChatPolling();
+                renderLiveSchedule();
+                updateSaveButtons();
+                applyCommentVisibility('live');
                 
                 // Load poll if one is linked to live stream
                 loadVideoPoll(currentContentId, '#livePollSection');
@@ -3306,6 +3504,10 @@
             // Load forum posts when entering forum page
             if (pageName === 'forum') {
                 loadForumPosts();
+            }
+
+            if (pageName === 'home') {
+                renderWatchlistRow();
             }
         }
 
@@ -3459,6 +3661,82 @@
             });
         }
 
+        function updateCommentCount(count) {
+            const commentCount = document.getElementById('commentCount');
+            if (commentCount) {
+                commentCount.textContent = count;
+            }
+        }
+
+        function getCommentVisibilityKey(type) {
+            return `blazetv_comment_visibility_${type}`;
+        }
+
+        function toggleCommentVisibility(type) {
+            const isHidden = localStorage.getItem(getCommentVisibilityKey(type)) === 'hidden';
+            localStorage.setItem(getCommentVisibilityKey(type), isHidden ? 'shown' : 'hidden');
+            applyCommentVisibility(type);
+        }
+
+        function applyCommentVisibility(type) {
+            const isHidden = localStorage.getItem(getCommentVisibilityKey(type)) === 'hidden';
+
+            if (type === 'live') {
+                const messages = document.getElementById('chatMessages');
+                const input = document.querySelector('#livePage .chat-input-container');
+                const hiddenState = document.getElementById('liveChatHiddenState');
+                const button = document.getElementById('liveChatToggleBtn');
+                if (messages) messages.style.display = isHidden ? 'none' : 'flex';
+                if (input) input.style.display = isHidden ? 'none' : 'block';
+                if (hiddenState) hiddenState.style.display = isHidden ? 'block' : 'none';
+                if (button) button.textContent = isHidden ? '👁 Show Chat' : '🙈 Hide Chat';
+            }
+
+            if (type === 'vod') {
+                const composer = document.getElementById('vodCommentComposer');
+                const comments = document.getElementById('vodComments');
+                const hiddenState = document.getElementById('vodCommentsHiddenState');
+                const button = document.getElementById('vodCommentsToggleBtn');
+                if (composer) composer.style.display = isHidden ? 'none' : 'block';
+                if (comments) comments.style.display = isHidden ? 'none' : 'block';
+                if (hiddenState) hiddenState.style.display = isHidden ? 'block' : 'none';
+                if (button) button.textContent = isHidden ? '👁 Show Comments' : '🙈 Hide Comments';
+            }
+        }
+
+        function reportComment(userId, contentId) {
+            const reports = JSON.parse(localStorage.getItem('blazetv_reported_comments') || '[]');
+            reports.push({
+                userId,
+                contentId,
+                reportedAt: new Date().toISOString()
+            });
+            localStorage.setItem('blazetv_reported_comments', JSON.stringify(reports.slice(-100)));
+            alert('Thanks. This comment has been flagged for moderator review in the prototype.');
+        }
+
+        function shareCurrentContent(title) {
+            const shareText = `Check out ${title} on BlazeTV`;
+            if (navigator.share) {
+                navigator.share({
+                    title: title,
+                    text: shareText,
+                    url: window.location.href
+                }).catch(() => {});
+                return;
+            }
+
+            navigator.clipboard?.writeText(`${shareText} - ${window.location.href}`);
+            alert('Share link copied to clipboard.');
+        }
+
+        function likeCurrentContent(contentId) {
+            const key = `blazetv_likes_${contentId}`;
+            const nextValue = Number(localStorage.getItem(key) || '0') + 1;
+            localStorage.setItem(key, String(nextValue));
+            alert(`You liked this. Total prototype likes: ${nextValue}`);
+        }
+
         // Load comments for specific video/stream
         async function loadCommentsForVideo(contentId) {
             if (!contentId) {
@@ -3509,10 +3787,17 @@
                         console.log(`Displaying comment ${index + 1}/${sortedComments.length}:`, comment.text);
                         displayComment(comment, container);
                     });
+
+                    if (!isLiveContent(contentId)) {
+                        updateCommentCount(sortedComments.length);
+                    }
                     
                     console.log('✅ All comments displayed successfully');
                 } else {
                     console.log('No saved comments - keeping example comments in HTML');
+                    if (!isLiveContent(contentId)) {
+                        updateCommentCount(container.children.length);
+                    }
                 }
             } catch (error) {
                 console.error('❌ Error loading comments:', error);
@@ -3525,6 +3810,9 @@
                     if (container) {
                         container.innerHTML = '';
                         sortCommentsByTip(fallbackComments).forEach(comment => displayComment(comment, container));
+                        if (!isLiveContent(contentId)) {
+                            updateCommentCount(fallbackComments.length);
+                        }
                     }
                 }
             }
@@ -3573,13 +3861,14 @@
                             <div style="flex: 1;">
                                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
                                     <span style="font-weight: 600;">${safeDisplayName}</span>
-                                    ${comment.tipAmount > 0 ? '<span style="background: #FFD700; color: #000; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;">📌 PINNED</span>' : ''}
-                                    <span style="color: var(--text-secondary); font-size: 0.85rem;">${getTimeAgo(comment.timestamp)}</span>
-                                    ${!isBlocked && comment.userId !== (currentUser?.email || '') ? 
-                                        `<button class="block-user-btn" onclick="blockUser(decodeURIComponent('${safeUserId}'))">Block</button>` : ''}
-                                </div>
-                                <p style="line-height: 1.6; ${comment.tipAmount > 0 ? '' : 'color: var(--text-secondary);'}">${safeCommentText}</p>
-                                ${comment.tipAmount > 0 ? `<div style="margin-top: 1rem; font-weight: 700; font-size: 1.1rem; color: #FFD700;">💰 $${comment.tipAmount}.00</div>` : ''}
+                                ${comment.tipAmount > 0 ? '<span style="background: #FFD700; color: #000; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;">📌 PINNED</span>' : ''}
+                                <span style="color: var(--text-secondary); font-size: 0.85rem;">${getTimeAgo(comment.timestamp)}</span>
+                                ${!isBlocked && comment.userId !== (currentUser?.email || '') ? 
+                                    `<button class="block-user-btn" onclick="blockUser(decodeURIComponent('${safeUserId}'))">Block</button>` : ''}
+                                <button class="block-user-btn" onclick="reportComment(decodeURIComponent('${safeUserId}'), currentContentId)">Report</button>
+                            </div>
+                            <p style="line-height: 1.6; ${comment.tipAmount > 0 ? '' : 'color: var(--text-secondary);'}">${safeCommentText}</p>
+                            ${comment.tipAmount > 0 ? `<div style="margin-top: 1rem; font-weight: 700; font-size: 1.1rem; color: #FFD700;">💰 $${comment.tipAmount}.00</div>` : ''}
                                 <div style="display: flex; gap: 1.5rem; margin-top: 1rem; font-size: 0.9rem;">
                                     <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">👍 0</button>
                                     <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;">Reply</button>
@@ -3603,6 +3892,7 @@
                                 ${comment.tipAmount > 0 ? `<span class="badge pinned">${isPinned ? `PINNED ${pinnedTimeLabel}` : 'SUPER CHAT'}</span>` : ''}
                                 ${!isBlocked && comment.userId !== (currentUser?.email || '') ? 
                                     `<button class="block-user-btn" onclick="blockUser(decodeURIComponent('${safeUserId}'))">Block</button>` : ''}
+                                <button class="block-user-btn" onclick="reportComment(decodeURIComponent('${safeUserId}'), currentContentId)">Report</button>
                             </div>
                             <div class="chat-text">${safeCommentText}</div>
                             <div class="chat-timestamp">${getTimeAgo(comment.timestamp)}</div>
@@ -4909,6 +5199,9 @@
             if (currentUser.primaryHost) {
                 document.body.setAttribute('data-host', currentUser.primaryHost);
             }
+
+            renderWatchlistRow();
+            updateSaveButtons();
         }
 
         // Welcome Modal Functions
@@ -4998,6 +5291,9 @@
                 currentUser.primaryHost = prefs.primaryHost;
                 document.body.setAttribute('data-host', prefs.primaryHost);
             }
+
+            renderWatchlistRow();
+            updateSaveButtons();
         }
 
         // Save user preferences
