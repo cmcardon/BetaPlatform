@@ -2993,6 +2993,7 @@
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', function() {
+            const initialPage = getStoredPage() || 'home';
             initLivePreview();
             fetchYouTubeTitle('G-TcuKoXzzI');
             startHeroRotation();
@@ -3004,6 +3005,7 @@
             renderWatchlistRow();
             applyCommentVisibility('live');
             applyCommentVisibility('vod');
+            showPage(initialPage, { updateHistory: false });
         });
 
         // Hero carousel rotation
@@ -3202,7 +3204,7 @@
                         title,
                         host: item.host || inferScheduleHost(title),
                         description: String(item.description || '').trim(),
-                        thumbnail: String(item.thumbnail || inferScheduleArt(title) || item.customThumbnail || item.metadata?.thumbnails?.maxres || '').trim()
+                        thumbnail: String(inferScheduleArt(title) || item.thumbnail || item.customThumbnail || item.metadata?.thumbnails?.maxres || '').trim()
                     };
                 })
                 .filter(item => item.start && item.title)
@@ -3304,6 +3306,15 @@
             return match ? match[1] : 'BlazeTV';
         }
 
+        function extractOriginalCardTitle(card) {
+            if (card.dataset.seriesTitle) {
+                return card.dataset.seriesTitle;
+            }
+
+            const titleElement = card.querySelector('.card-title');
+            return titleElement ? titleElement.textContent.trim() : 'BlazeTV';
+        }
+
         function prepareCarouselCards(root = document) {
             const cards = Array.from(root.querySelectorAll('.content-card:not(.live-card)'));
 
@@ -3319,7 +3330,11 @@
                     titleElement.insertAdjacentElement('beforebegin', seriesElement);
                 }
 
-                seriesElement.textContent = extractHostFromCard(card);
+                if (!card.dataset.seriesTitle) {
+                    card.dataset.seriesTitle = titleElement.textContent.trim();
+                }
+
+                seriesElement.textContent = extractOriginalCardTitle(card);
 
                 if (!metaElement.dataset.prepared) {
                     metaElement.innerHTML = `
@@ -3356,7 +3371,7 @@
                     titleElement.insertAdjacentElement('beforebegin', seriesElement);
                 }
 
-                seriesElement.textContent = metadata.authorName || hostElement?.textContent || 'BlazeTV';
+                seriesElement.textContent = extractOriginalCardTitle(card);
 
                 const metaElement = card.querySelector('.card-meta');
                 if (metaElement) {
@@ -3370,7 +3385,7 @@
                 const matchingHero = heroVideos.find(video => video.id === videoId);
                 if (matchingHero) {
                     if (metadata.title) matchingHero.title = metadata.title;
-                    if (metadata.authorName) matchingHero.host = metadata.authorName;
+                    if (card.dataset.seriesTitle) matchingHero.host = card.dataset.seriesTitle;
                 }
             });
         }
@@ -3524,7 +3539,7 @@
             if (!section) return;
 
             const schedule = getRenderableSchedule();
-            const upcomingSchedule = schedule.filter(item => item.status !== 'Replay');
+            const visibleSchedule = schedule.slice(0, 16);
 
             section.innerHTML = `
                 <div style="background: linear-gradient(135deg, rgba(255,0,45,0.16), rgba(255,122,0,0.08)); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
@@ -3535,7 +3550,7 @@
                     </div>
                     <button class="btn-primary" onclick="showPage('live')" style="padding: 0.95rem 1.5rem;">▶ Watch Live</button>
                 </div>
-                ${upcomingSchedule.map((item, index) => `
+                ${visibleSchedule.map((item, index) => `
                     <div style="background: ${item.status === 'Now' ? 'linear-gradient(135deg, rgba(255,0,45,0.18), rgba(255,51,85,0.08))' : 'var(--bg-secondary)'}; border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1.25rem 1.4rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
                         <div style="display: flex; gap: 1rem; align-items: center;">
                             <div style="width: 72px; height: 72px; border-radius: 12px; background: var(--bg-tertiary) url('${escapeHtml(item.thumbnail || 'BlazeTV_Logo.png')}') center/cover no-repeat; flex-shrink: 0;"></div>
@@ -3896,8 +3911,18 @@
             }
         }
 
+        function getStoredPage() {
+            const hashPage = window.location.hash.replace('#', '').trim();
+            if (hashPage) {
+                return hashPage;
+            }
+
+            return sessionStorage.getItem('blazetv_current_page') || 'home';
+        }
+
         // Navigation
-        function showPage(pageName) {
+        function showPage(pageName, options = {}) {
+            const { updateHistory = true } = options;
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-link').forEach(a => a.classList.remove('active'));
             
@@ -3913,6 +3938,11 @@
             const pageElement = document.getElementById(pageMap[pageName]);
             if (pageElement) {
                 pageElement.classList.add('active');
+            }
+
+            sessionStorage.setItem('blazetv_current_page', pageName);
+            if (updateHistory) {
+                window.location.hash = pageName;
             }
             
             // Update both desktop and mobile nav links
