@@ -960,13 +960,14 @@
 
         .content-card {
             min-width: 320px;
-            aspect-ratio: 16/9;
             background: var(--bg-secondary);
             border-radius: 8px;
             overflow: hidden;
             cursor: pointer;
             transition: all 0.3s ease;
             position: relative;
+            display: flex;
+            flex-direction: column;
         }
 
         .content-card:hover {
@@ -977,30 +978,33 @@
 
         .content-card-image {
             width: 100%;
-            height: 100%;
+            height: 180px;
             object-fit: cover;
             background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
         }
 
         .content-card-overlay {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 1.5rem;
-            background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.9) 100%);
-            transform: translateY(100%);
-            transition: transform 0.3s ease;
+            position: relative;
+            padding: 0.95rem 1rem 1rem;
+            background: linear-gradient(180deg, rgba(14, 14, 14, 0.98) 0%, rgba(20, 20, 20, 0.98) 100%);
+            transform: none;
+            transition: none;
+            min-height: 88px;
         }
 
         .content-card:hover .content-card-overlay {
-            transform: translateY(0);
+            transform: none;
         }
 
         .card-title {
             font-weight: 600;
             font-size: 1.1rem;
             margin-bottom: 0.5rem;
+            line-height: 1.35;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .card-meta {
@@ -1013,6 +1017,21 @@
 
         .live-card {
             border: 2px solid #FF0000;
+        }
+
+        .live-card {
+            aspect-ratio: 16/9;
+            display: block;
+        }
+
+        .live-card .content-card-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 1.5rem;
+            background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.9) 100%);
+            min-height: auto;
         }
 
         .live-badge {
@@ -2970,6 +2989,7 @@
             renderLiveSchedule();
             renderSchedulePage();
             loadLiveSchedule();
+            hydrateCarouselTitles();
             renderWatchlistRow();
             applyCommentVisibility('live');
             applyCommentVisibility('vod');
@@ -2987,7 +3007,6 @@
         ];
 
         const LIVE_SCHEDULE_API_URL = '/.netlify/functions/live-schedule';
-        const SCHEDULE_TIMEZONE = 'America/Chicago';
         const fallbackProgrammingSchedule = buildFallbackProgrammingSchedule();
         const showHostMatches = [
             { match: 'The Glenn Beck Program', host: 'Glenn Beck' },
@@ -3008,6 +3027,7 @@
         let liveScheduleSource = 'fallback';
         let liveScheduleLoaded = false;
         let liveScheduleLoadPromise = null;
+        const videoMetadataCache = new Map();
         
         let currentHeroIndex = 0;
 
@@ -3031,6 +3051,21 @@
             }));
         }
 
+        function getViewerTimeZone() {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        }
+
+        function getViewerTimeZoneLabel(isoString = new Date().toISOString()) {
+            const date = new Date(isoString);
+            const parts = new Intl.DateTimeFormat('en-US', {
+                hour: 'numeric',
+                timeZone: getViewerTimeZone(),
+                timeZoneName: 'short'
+            }).formatToParts(date);
+            const zonePart = parts.find(part => part.type === 'timeZoneName');
+            return zonePart ? zonePart.value : 'Local Time';
+        }
+
         function formatScheduleTime(isoString) {
             const date = new Date(isoString);
             if (Number.isNaN(date.getTime())) {
@@ -3040,7 +3075,7 @@
             return date.toLocaleTimeString('en-US', {
                 hour: 'numeric',
                 minute: '2-digit',
-                timeZone: SCHEDULE_TIMEZONE
+                timeZone: getViewerTimeZone()
             });
         }
 
@@ -3066,6 +3101,11 @@
                 .replace(/^LIVE\s*\|\s*/i, '')
                 .replace(/\s*\|\s*Replay$/i, '')
                 .trim();
+        }
+
+        function formatScheduleSubtitle(item) {
+            const label = getViewerTimeZoneLabel(item.start);
+            return `${escapeHtml(item.host)} • ${escapeHtml(label)}`;
         }
 
         function inferScheduleHost(title) {
@@ -3146,6 +3186,63 @@
             })();
 
             return liveScheduleLoadPromise;
+        }
+
+        async function fetchYouTubeMetadata(videoId) {
+            if (!videoId) return null;
+
+            if (!videoMetadataCache.has(videoId)) {
+                const request = fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Metadata request failed with ${response.status}`);
+                        }
+
+                        return response.json();
+                    })
+                    .catch(error => {
+                        console.warn(`Could not load metadata for ${videoId}:`, error);
+                        return null;
+                    });
+
+                videoMetadataCache.set(videoId, request);
+            }
+
+            return videoMetadataCache.get(videoId);
+        }
+
+        function extractVideoIdFromCard(card) {
+            const onclickValue = card.getAttribute('onclick') || '';
+            const match = onclickValue.match(/playYouTubeVideo\('([^']+)'/);
+            return match ? match[1] : '';
+        }
+
+        function hydrateCarouselTitles(root = document) {
+            const cards = Array.from(root.querySelectorAll('.content-card:not(.live-card)'));
+
+            cards.forEach(async (card) => {
+                const videoId = extractVideoIdFromCard(card);
+                const titleElement = card.querySelector('.card-title');
+                const hostElement = card.querySelector('.card-meta span');
+                if (!videoId || !titleElement) return;
+
+                const metadata = await fetchYouTubeMetadata(videoId);
+                if (!metadata) return;
+
+                if (metadata.title) {
+                    titleElement.textContent = metadata.title;
+                }
+
+                if (hostElement && metadata.author_name) {
+                    hostElement.textContent = metadata.author_name;
+                }
+
+                const matchingHero = heroVideos.find(video => video.id === videoId);
+                if (matchingHero) {
+                    if (metadata.title) matchingHero.title = metadata.title;
+                    if (metadata.author_name) matchingHero.host = metadata.author_name;
+                }
+            });
         }
 
         function getWatchlistKey() {
@@ -3261,12 +3358,12 @@
 
             const schedule = getRenderableSchedule();
             const nowShowing = schedule.find(item => item.status === 'Now') || schedule[0];
-            const upcomingItems = schedule.filter(item => item.id !== nowShowing?.id).slice(0, 4);
+            const upcomingItems = schedule.filter(item => item.id !== nowShowing?.id).slice(0, 8);
             const upcoming = upcomingItems.map(item => `
                 <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.65rem 0; border-top: 1px solid rgba(255,255,255,0.06);">
                     <div>
                         <div style="font-weight: 600;">${escapeHtml(item.title)}</div>
-                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(item.host)}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${formatScheduleSubtitle(item)}</div>
                     </div>
                     <div style="text-align: right; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">${escapeHtml(item.time)}</div>
                 </div>
@@ -3276,7 +3373,7 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
                     <div>
                         <div style="font-family: 'Oswald', sans-serif; font-size: 1.2rem;">Programming Guide</div>
-                        <div style="color: var(--text-secondary); font-size: 0.9rem;">${liveScheduleSource === 'live' ? 'Pulled from the current BlazeTV platform lineup' : 'Fallback prototype lineup while the live feed loads'}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.9rem;">${liveScheduleSource === 'live' ? `Pulled from the current BlazeTV platform lineup. Showing times in your local zone (${escapeHtml(getViewerTimeZoneLabel())}).` : 'Fallback prototype lineup while the live feed loads'}</div>
                     </div>
                     <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
                         <button class="btn-primary" onclick="showPage('live')" style="padding: 0.7rem 1rem; font-size: 0.9rem;">▶ Watch Live</button>
@@ -3310,11 +3407,11 @@
                         <div>
                             <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.35rem;">${escapeHtml(item.status)}</div>
                             <div style="font-weight: 700; font-size: 1.15rem;">${escapeHtml(item.title)}</div>
-                            <div style="color: var(--text-secondary); margin-top: 0.2rem;">${escapeHtml(item.host)}</div>
+                            <div style="color: var(--text-secondary); margin-top: 0.2rem;">${formatScheduleSubtitle(item)}</div>
                         </div>
                         <div style="text-align: right;">
                             <div style="font-family: 'Oswald', sans-serif; font-size: 1.45rem;">${escapeHtml(item.time)}</div>
-                            <div style="color: var(--text-secondary); font-size: 0.9rem;">Central Time</div>
+                            <div style="color: var(--text-secondary); font-size: 0.9rem;">Your Local Time</div>
                         </div>
                     </div>
                 `).join('')}
