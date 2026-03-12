@@ -1009,9 +1009,11 @@
 
         .card-series {
             font-size: 0.9rem;
-            color: var(--text-primary);
+            color: var(--accent-primary);
             margin-bottom: 0.35rem;
-            font-weight: 500;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
         }
 
         .card-meta {
@@ -3032,6 +3034,21 @@
             { match: 'Nicole Shanahan', host: 'Nicole Shanahan' },
             { match: 'Blaze News Tonight', host: 'Blaze News' }
         ];
+        const showArtMatches = [
+            { match: 'The Glenn Beck Program', art: 'show-art/The_Glenn_Beck_Program_Show_Art.jpg' },
+            { match: 'Fearless with Jason Whitlock', art: 'show-art/Fearless_with_Jason_Whitlock_Show_Art.jpg' },
+            { match: 'The Liz Wheeler Show', art: 'show-art/Liz_Wheeler_Show_Art.jpg' },
+            { match: 'Sara Gonzales Unfiltered', art: 'show-art/The_Sara_Gonzales_Show_Art.jpg' },
+            { match: 'Pat Gray Unleashed', art: 'show-art/Pat_Gray_Unleashed_Show_Art.jpg' },
+            { match: 'Stu Does America', art: 'show-art/Stu_Does_America_Show_Art.jpg' },
+            { match: 'Relatable with Allie Beth Stuckey', art: 'show-art/Relatable_with_Allie_Beth_Stuckey_Show_Art.jpg' },
+            { match: 'The Steve Deace Show', art: 'show-art/The_Steve_Deace_Show_Art.jpg' },
+            { match: 'The Auron MacIntyre Show', art: 'show-art/The_Auron_MacIntyre_Show_Show_Art.jpg' },
+            { match: 'The John Doyle Show', art: 'show-art/The_John_Doyle_Show_Show_Art.jpg' },
+            { match: 'Rufo & Lomez', art: 'show-art/Rufo___Lomez_Show_Art.jpg' },
+            { match: 'Nicole Shanahan', art: 'show-art/Nicole_Shanahan_Show_Art.jpg' },
+            { match: 'Strange Encounters', art: 'show-art/Strange_Encounters_Show_Art_.jpeg' }
+        ];
         let liveProgrammingSchedule = [];
         let liveScheduleSource = 'fallback';
         let liveScheduleLoaded = false;
@@ -3166,6 +3183,12 @@
             return match ? match.host : 'BlazeTV';
         }
 
+        function inferScheduleArt(title) {
+            const normalizedTitle = cleanScheduleTitle(title);
+            const match = showArtMatches.find(item => normalizedTitle.includes(item.match));
+            return match ? match.art : 'BlazeTV_Logo.png';
+        }
+
         function normalizeScheduleItems(items) {
             const normalized = items
                 .map(item => {
@@ -3178,7 +3201,7 @@
                         title,
                         host: item.host || inferScheduleHost(title),
                         description: String(item.description || '').trim(),
-                        thumbnail: String(item.thumbnail || item.customThumbnail || item.metadata?.thumbnails?.maxres || '').trim()
+                        thumbnail: String(item.thumbnail || inferScheduleArt(title) || item.customThumbnail || item.metadata?.thumbnails?.maxres || '').trim()
                     };
                 })
                 .filter(item => item.start && item.title)
@@ -3289,7 +3312,7 @@
                 if (!seriesElement) {
                     seriesElement = document.createElement('div');
                     seriesElement.className = 'card-series';
-                    titleElement.insertAdjacentElement('afterend', seriesElement);
+                    titleElement.insertAdjacentElement('beforebegin', seriesElement);
                 }
 
                 seriesElement.textContent = metadata.authorName || hostElement?.textContent || 'BlazeTV';
@@ -3298,7 +3321,7 @@
                 if (metaElement) {
                     metaElement.innerHTML = `
                         <span>${escapeHtml(formatUploadDate(metadata.uploadDate))}</span>
-                        <span>•</span>
+                        <span>|</span>
                         <span>${escapeHtml(formatRuntime(metadata.runtimeSeconds))}</span>
                     `;
                 }
