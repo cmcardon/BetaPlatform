@@ -311,6 +311,10 @@
             justify-content: center;
             font-weight: 600;
             font-size: 0.95rem;
+            overflow: hidden;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
         }
 
         .dropdown-arrow {
@@ -567,6 +571,10 @@
             font-weight: 600;
             font-size: 0.9rem;
             flex-shrink: 0;
+            overflow: hidden;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
         }
 
         .chat-content {
@@ -1719,7 +1727,7 @@
 
         <div class="chat-sidebar">
             <!-- Live Stream Poll Section (if poll is linked) -->
-            <div id="livePollSection" style="margin-bottom: 1rem;"></div>
+            <div id="livePollSection" style="margin: 0.85rem 1rem 0.5rem;"></div>
             
             <div class="chat-header">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
@@ -2785,6 +2793,11 @@
                         <div class="avatar-option" data-avatar="📻">📻</div>
                     </div>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Upload Profile Photo</label>
+                    <input type="file" class="form-input" id="profileImageUpload" accept="image/*">
+                    <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">Optional. A square image works best for comments and chat.</small>
+                </div>
                 <button type="submit" class="btn-submit">Save Changes</button>
                 <button type="button" class="btn-submit" onclick="logoutWithAuth0()" style="background: var(--bg-tertiary); margin-top: 0.5rem;">Sign Out</button>
             </form>
@@ -2981,6 +2994,15 @@
 
         function getWatchlistKey() {
             return currentUser ? `blazetv_watchlist_${currentUser.email}` : 'blazetv_watchlist_guest';
+        }
+
+        function readImageFileAsDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Unable to read image file'));
+                reader.readAsDataURL(file);
+            });
         }
 
         function loadWatchlist() {
@@ -3579,6 +3601,32 @@
                 .replace(/'/g, '&#39;');
         }
 
+        function isImageAvatar(value) {
+            return typeof value === 'string' && (value.startsWith('data:image/') || value.startsWith('https://') || value.startsWith('http://'));
+        }
+
+        function getAvatarMarkup(value, className = 'chat-avatar', style = '') {
+            if (isImageAvatar(value)) {
+                return `<div class="${className}" style="${style}"><img src="${escapeHtml(value)}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;"></div>`;
+            }
+
+            return `<div class="${className}" style="${style}">${escapeHtml(value || '🔥')}</div>`;
+        }
+
+        function applyAvatarToElement(element, avatarValue) {
+            if (!element) return;
+
+            if (isImageAvatar(avatarValue)) {
+                element.textContent = '';
+                element.style.backgroundImage = `url("${avatarValue.replace(/"/g, '\\"')}")`;
+                element.style.backgroundColor = 'transparent';
+            } else {
+                element.style.backgroundImage = '';
+                element.style.backgroundColor = '';
+                element.textContent = avatarValue || '🔥';
+            }
+        }
+
         function encodeInlineParam(value) {
             return encodeURIComponent(String(value ?? ''));
         }
@@ -3895,7 +3943,7 @@
                     
                     messageDiv.innerHTML = `
                         <div style="display: flex; gap: 1rem;">
-                            <div class="chat-avatar">${safeAvatar}</div>
+                            ${getAvatarMarkup(comment.avatar || '🔥')}
                             <div style="flex: 1;">
                                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
                                     <span style="font-weight: 600;">${safeDisplayName}</span>
@@ -3923,7 +3971,7 @@
                     
                     messageDiv.innerHTML = `
                         ${comment.tipAmount > 0 ? `<div class="super-chat-amount">💰 $${comment.tipAmount}.00</div>` : ''}
-                        <div class="chat-avatar">${safeAvatar}</div>
+                        ${getAvatarMarkup(comment.avatar || '🔥')}
                         <div class="chat-content">
                             <div class="chat-user">
                                 ${safeDisplayName}
@@ -4046,15 +4094,39 @@
             });
         });
 
-        function saveProfile(event) {
+        async function saveProfile(event) {
             event.preventDefault();
-            const displayName = document.getElementById('displayName').value;
+            const displayName = document.getElementById('displayName').value.trim();
             const selectedAvatar = document.querySelector('.avatar-option.selected').dataset.avatar;
             const host = document.getElementById('primaryHost').value;
-            
-            document.getElementById('headerAvatar').textContent = selectedAvatar;
+            const imageInput = document.getElementById('profileImageUpload');
+
+            let avatarValue = currentUser?.avatar || selectedAvatar;
+
+            if (imageInput?.files?.[0]) {
+                try {
+                    avatarValue = await readImageFileAsDataUrl(imageInput.files[0]);
+                } catch (error) {
+                    console.error('Profile image upload failed:', error);
+                    alert('We could not read that image. Please try a different file.');
+                    return;
+                }
+            } else if (!isImageAvatar(currentUser?.avatar)) {
+                avatarValue = selectedAvatar;
+            }
+
+            if (currentUser) {
+                currentUser.displayName = displayName || currentUser.displayName;
+                currentUser.avatar = avatarValue;
+                currentUser.primaryHost = host;
+            }
+
+            applyAvatarToElement(document.getElementById('headerAvatar'), avatarValue);
+            applyAvatarToElement(document.getElementById('vodUserAvatar'), avatarValue);
             document.body.setAttribute('data-host', host);
             document.getElementById('profileModal').classList.remove('active');
+
+            saveUserPreferences();
             
             alert('Profile updated! Theme changed to ' + host.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
         }
@@ -4158,13 +4230,12 @@
             let commentsHTML = '';
             if (post.commentList && post.commentList.length > 0) {
                 post.commentList.forEach(comment => {
-                    const safeCommentAvatar = escapeHtml(comment.avatar);
                     const safeCommentAuthor = escapeHtml(comment.author);
                     const safeCommentText = escapeHtml(comment.text);
                     commentsHTML += `
                         <div style="background: var(--bg-secondary); padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem;">
                             <div style="display: flex; gap: 1rem; align-items: start;">
-                                <div class="chat-avatar">${safeCommentAvatar}</div>
+                                ${getAvatarMarkup(comment.avatar, 'chat-avatar')}
                                 <div style="flex: 1;">
                                     <div style="font-weight: 600; margin-bottom: 0.5rem;">${safeCommentAuthor}</div>
                                     <p style="line-height: 1.6; color: var(--text-secondary);">${safeCommentText}</p>
@@ -4208,7 +4279,6 @@
                 pollHTML += '</div>';
             }
 
-            const safePostAvatar = escapeHtml(post.avatar);
             const safePostAuthor = escapeHtml(post.author);
             const safePostCategory = escapeHtml(post.category);
             const safePostTitle = escapeHtml(post.title);
@@ -4217,7 +4287,7 @@
             container.innerHTML = `
                 <div style="background: var(--bg-secondary); padding: 2.5rem; border-radius: 12px; margin-bottom: 2rem;">
                     <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 2rem;">
-                        <div class="post-avatar" style="font-size: 2rem;">${safePostAvatar}</div>
+                        ${getAvatarMarkup(post.avatar, 'post-avatar', 'font-size: 2rem;')}
                         <div>
                             <h3 style="font-weight: 600; margin-bottom: 0.25rem;">${safePostAuthor}</h3>
                             <div style="color: var(--text-muted); font-size: 0.9rem;">${getTimeAgo(post.timestamp)} • ${safePostCategory}</div>
@@ -4416,7 +4486,6 @@
                     `;
                 });
 
-                const safePostAvatar = escapeHtml(post.avatar);
                 const safePostAuthor = escapeHtml(post.author);
                 const safePostCategory = escapeHtml(post.category);
                 const safePostTitle = escapeHtml(post.title);
@@ -4424,7 +4493,7 @@
                 postDiv.innerHTML = `
                     <div class="post-header">
                         <div class="post-author">
-                            <div class="post-avatar">${safePostAvatar}</div>
+                            ${getAvatarMarkup(post.avatar, 'post-avatar')}
                             <div class="post-author-info">
                                 <h4>${safePostAuthor}</h4>
                                 <div class="post-meta">${getTimeAgo(post.timestamp)} • ${safePostCategory}</div>
@@ -4444,7 +4513,6 @@
             } else {
                 // Regular post
                 postDiv.onclick = () => openForumPost(post.id);
-                const safePostAvatar = escapeHtml(post.avatar);
                 const safePostAuthor = escapeHtml(post.author);
                 const safePostCategory = escapeHtml(post.category);
                 const safePostTitle = escapeHtml(post.title);
@@ -4453,7 +4521,7 @@
                 postDiv.innerHTML = `
                     <div class="post-header">
                         <div class="post-author">
-                            <div class="post-avatar">${safePostAvatar}</div>
+                            ${getAvatarMarkup(post.avatar, 'post-avatar')}
                             <div class="post-author-info">
                                 <h4>${safePostAuthor}</h4>
                                 <div class="post-meta">${getTimeAgo(post.timestamp)} • ${safePostCategory}</div>
@@ -5217,13 +5285,13 @@
             // Update user avatar and name in header
             const userAvatars = document.querySelectorAll('.user-avatar');
             userAvatars.forEach(avatar => {
-                avatar.textContent = currentUser.avatar;
+                applyAvatarToElement(avatar, currentUser.avatar);
             });
             
             // Update VOD comment avatar specifically
             const vodAvatar = document.getElementById('vodUserAvatar');
             if (vodAvatar) {
-                vodAvatar.textContent = currentUser.avatar;
+                applyAvatarToElement(vodAvatar, currentUser.avatar);
             }
             
             // Update profile modal
@@ -5337,11 +5405,14 @@
         // Save user preferences
         function saveUserPreferences() {
             if (!currentUser) return;
+
+            const existingPrefs = JSON.parse(localStorage.getItem(`blazetv_prefs_${currentUser.email}`) || '{}');
             
             const prefs = {
                 displayName: currentUser.displayName,
                 avatar: currentUser.avatar,
-                primaryHost: currentUser.primaryHost
+                primaryHost: currentUser.primaryHost,
+                hasCompletedSetup: existingPrefs.hasCompletedSetup !== false
             };
             
             localStorage.setItem(`blazetv_prefs_${currentUser.email}`, JSON.stringify(prefs));
