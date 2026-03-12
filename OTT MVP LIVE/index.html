@@ -3146,7 +3146,7 @@
             });
         });
 
-        function postVODComment() {
+        async function postVODComment() {
             const input = document.getElementById('vodCommentInput');
             const commentText = input.value.trim();
             if (!commentText) return;
@@ -3174,14 +3174,20 @@
                 tipAmount: selectedVODTip,
                 timestamp: new Date().toISOString()
             };
-            
-            // Save to localStorage for this specific content
-            const comments = loadCommentsForContent(currentContentId);
-            comments.push(comment);
-            localStorage.setItem(getCommentsKey(currentContentId), JSON.stringify(comments));
-            
-            // Reload all comments (so they're sorted by tip)
-            loadCommentsForVideo(currentContentId);
+
+            comment.pinnedUntil = getPinnedUntil(comment.timestamp, comment.tipAmount);
+
+            try {
+                const comments = await saveCommentToApi(currentContentId, comment);
+                localStorage.setItem(getCommentsKey(currentContentId), JSON.stringify(comments));
+                
+                // Reload all comments (so they're sorted by tip)
+                await loadCommentsForVideo(currentContentId);
+            } catch (error) {
+                console.error('Failed to post VOD comment:', error);
+                alert('We could not post your comment right now. Please try again.');
+                return;
+            }
             
             input.value = '';
             
@@ -3324,6 +3330,19 @@
             return `blazetv_comments_${contentId}`;
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function encodeInlineParam(value) {
+            return encodeURIComponent(String(value ?? ''));
+        }
+
         function isLiveContent(contentId) {
             return typeof contentId === 'string' && contentId.startsWith('live_');
         }
@@ -3453,9 +3472,7 @@
             
             try {
                 // Get comments for this specific content
-                const comments = isLiveContent(contentId)
-                    ? await fetchCommentsFromApi(contentId)
-                    : loadCommentsForContent(contentId);
+                const comments = await fetchCommentsFromApi(contentId);
                 console.log('Found', comments.length, 'comments');
                 
                 // Determine which container to use
@@ -3500,15 +3517,14 @@
             } catch (error) {
                 console.error('❌ Error loading comments:', error);
 
-                if (isLiveContent(contentId)) {
-                    console.log('Falling back to local comments for live chat');
-                    const fallbackComments = loadCommentsForContent(contentId);
-                    if (fallbackComments.length > 0) {
-                        const container = document.querySelector('#chatMessages');
-                        if (container) {
-                            container.innerHTML = '';
-                            sortCommentsByTip(fallbackComments).forEach(comment => displayComment(comment, container));
-                        }
+                console.log('Falling back to local comments cache');
+                const fallbackComments = loadCommentsForContent(contentId);
+                const containerSelector = isLiveContent(contentId) ? '#chatMessages' : '#vodComments';
+                if (fallbackComments.length > 0) {
+                    const container = document.querySelector(containerSelector);
+                    if (container) {
+                        container.innerHTML = '';
+                        sortCommentsByTip(fallbackComments).forEach(comment => displayComment(comment, container));
                     }
                 }
             }
@@ -3531,6 +3547,10 @@
                 const isVOD = container.id === 'vodComments';
                 const isPinned = isActivelyPinned(comment);
                 const pinnedTimeLabel = formatPinnedTimeRemaining(comment);
+                const safeAvatar = escapeHtml(comment.avatar || '🔥');
+                const safeDisplayName = escapeHtml(comment.displayName || 'Anonymous');
+                const safeCommentText = escapeHtml(comment.text || '');
+                const safeUserId = encodeInlineParam(comment.userId || '');
                 
                 console.log('Creating message div for:', isVOD ? 'VOD' : 'Live Chat');
                 
@@ -3549,16 +3569,16 @@
                     
                     messageDiv.innerHTML = `
                         <div style="display: flex; gap: 1rem;">
-                            <div class="chat-avatar">${comment.avatar || '🔥'}</div>
+                            <div class="chat-avatar">${safeAvatar}</div>
                             <div style="flex: 1;">
                                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-                                    <span style="font-weight: 600;">${comment.displayName || 'Anonymous'}</span>
+                                    <span style="font-weight: 600;">${safeDisplayName}</span>
                                     ${comment.tipAmount > 0 ? '<span style="background: #FFD700; color: #000; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;">📌 PINNED</span>' : ''}
                                     <span style="color: var(--text-secondary); font-size: 0.85rem;">${getTimeAgo(comment.timestamp)}</span>
                                     ${!isBlocked && comment.userId !== (currentUser?.email || '') ? 
-                                        `<button class="block-user-btn" onclick="blockUser('${comment.userId || ''}')">Block</button>` : ''}
+                                        `<button class="block-user-btn" onclick="blockUser(decodeURIComponent('${safeUserId}'))">Block</button>` : ''}
                                 </div>
-                                <p style="line-height: 1.6; ${comment.tipAmount > 0 ? '' : 'color: var(--text-secondary);'}">${comment.text || ''}</p>
+                                <p style="line-height: 1.6; ${comment.tipAmount > 0 ? '' : 'color: var(--text-secondary);'}">${safeCommentText}</p>
                                 ${comment.tipAmount > 0 ? `<div style="margin-top: 1rem; font-weight: 700; font-size: 1.1rem; color: #FFD700;">💰 $${comment.tipAmount}.00</div>` : ''}
                                 <div style="display: flex; gap: 1.5rem; margin-top: 1rem; font-size: 0.9rem;">
                                     <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">👍 0</button>
@@ -3576,15 +3596,15 @@
                     
                     messageDiv.innerHTML = `
                         ${comment.tipAmount > 0 ? `<div class="super-chat-amount">💰 $${comment.tipAmount}.00</div>` : ''}
-                        <div class="chat-avatar">${comment.avatar || '🔥'}</div>
+                        <div class="chat-avatar">${safeAvatar}</div>
                         <div class="chat-content">
                             <div class="chat-user">
-                                ${comment.displayName || 'Anonymous'}
+                                ${safeDisplayName}
                                 ${comment.tipAmount > 0 ? `<span class="badge pinned">${isPinned ? `PINNED ${pinnedTimeLabel}` : 'SUPER CHAT'}</span>` : ''}
                                 ${!isBlocked && comment.userId !== (currentUser?.email || '') ? 
-                                    `<button class="block-user-btn" onclick="blockUser('${comment.userId || ''}')">Block</button>` : ''}
+                                    `<button class="block-user-btn" onclick="blockUser(decodeURIComponent('${safeUserId}'))">Block</button>` : ''}
                             </div>
-                            <div class="chat-text">${comment.text || ''}</div>
+                            <div class="chat-text">${safeCommentText}</div>
                             <div class="chat-timestamp">${getTimeAgo(comment.timestamp)}</div>
                         </div>
                     `;
@@ -3655,16 +3675,12 @@
             try {
                 let comments;
 
-                if (isLiveContent(currentContentId)) {
-                    comments = await saveCommentToApi(currentContentId, comment);
-                    console.log('Saved to shared live chat store');
-                } else {
-                    comments = loadCommentsForContent(currentContentId);
-                    comments.push(comment);
-                    const storageKey = getCommentsKey(currentContentId);
-                    localStorage.setItem(storageKey, JSON.stringify(comments));
-                    console.log('Saved to localStorage key:', storageKey);
-                }
+                comments = await saveCommentToApi(currentContentId, comment);
+                console.log('Saved to shared comments store');
+
+                const storageKey = getCommentsKey(currentContentId);
+                localStorage.setItem(storageKey, JSON.stringify(comments));
+                console.log('Saved local cache key:', storageKey);
 
                 console.log('Total comments:', comments.length);
 
@@ -3814,13 +3830,16 @@
             let commentsHTML = '';
             if (post.commentList && post.commentList.length > 0) {
                 post.commentList.forEach(comment => {
+                    const safeCommentAvatar = escapeHtml(comment.avatar);
+                    const safeCommentAuthor = escapeHtml(comment.author);
+                    const safeCommentText = escapeHtml(comment.text);
                     commentsHTML += `
                         <div style="background: var(--bg-secondary); padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem;">
                             <div style="display: flex; gap: 1rem; align-items: start;">
-                                <div class="chat-avatar">${comment.avatar}</div>
+                                <div class="chat-avatar">${safeCommentAvatar}</div>
                                 <div style="flex: 1;">
-                                    <div style="font-weight: 600; margin-bottom: 0.5rem;">${comment.author}</div>
-                                    <p style="line-height: 1.6; color: var(--text-secondary);">${comment.text}</p>
+                                    <div style="font-weight: 600; margin-bottom: 0.5rem;">${safeCommentAuthor}</div>
+                                    <p style="line-height: 1.6; color: var(--text-secondary);">${safeCommentText}</p>
                                     <div style="margin-top: 0.75rem; display: flex; gap: 1.5rem; font-size: 0.9rem; color: var(--text-muted);">
                                         <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;">👍 ${comment.likes}</button>
                                         <button style="background: none; border: none; color: var(--text-secondary); cursor: pointer;">Reply</button>
@@ -3837,11 +3856,12 @@
             if (post.isPoll) {
                 pollHTML = '<div style="background: var(--bg-secondary); padding: 2rem; border-radius: 12px; margin-bottom: 2rem;">';
                 post.pollOptions.forEach((option, idx) => {
+                    const safeOptionText = escapeHtml(option.text);
                     const percentage = post.totalVotes > 0 ? Math.round((option.votes / post.totalVotes) * 100) : 0;
                     pollHTML += `
                         <div style="margin-bottom: 1.5rem;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                <span style="font-weight: 500; font-size: 1.1rem;">${option.text}</span>
+                                <span style="font-weight: 500; font-size: 1.1rem;">${safeOptionText}</span>
                                 <button onclick="votePoll(${post.id}, ${idx})" 
                                         style="padding: 0.6rem 1.5rem; background: var(--accent-primary); border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 0.95rem; font-weight: 600;">
                                     Vote
@@ -3859,20 +3879,26 @@
                 pollHTML += `<div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--bg-tertiary); font-size: 1.1rem; font-weight: 600; color: var(--text-secondary);">Total votes: ${post.totalVotes}</div>`;
                 pollHTML += '</div>';
             }
+
+            const safePostAvatar = escapeHtml(post.avatar);
+            const safePostAuthor = escapeHtml(post.author);
+            const safePostCategory = escapeHtml(post.category);
+            const safePostTitle = escapeHtml(post.title);
+            const safePostContent = escapeHtml(post.content || '');
             
             container.innerHTML = `
                 <div style="background: var(--bg-secondary); padding: 2.5rem; border-radius: 12px; margin-bottom: 2rem;">
                     <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 2rem;">
-                        <div class="post-avatar" style="font-size: 2rem;">${post.avatar}</div>
+                        <div class="post-avatar" style="font-size: 2rem;">${safePostAvatar}</div>
                         <div>
-                            <h3 style="font-weight: 600; margin-bottom: 0.25rem;">${post.author}</h3>
-                            <div style="color: var(--text-muted); font-size: 0.9rem;">${getTimeAgo(post.timestamp)} • ${post.category}</div>
+                            <h3 style="font-weight: 600; margin-bottom: 0.25rem;">${safePostAuthor}</h3>
+                            <div style="color: var(--text-muted); font-size: 0.9rem;">${getTimeAgo(post.timestamp)} • ${safePostCategory}</div>
                         </div>
                     </div>
                     
-                    <h1 style="font-family: 'Oswald', sans-serif; font-size: 2.5rem; margin-bottom: 1.5rem;">${post.title}</h1>
+                    <h1 style="font-family: 'Oswald', sans-serif; font-size: 2.5rem; margin-bottom: 1.5rem;">${safePostTitle}</h1>
                     
-                    ${post.content ? `<p style="font-size: 1.1rem; line-height: 1.8; color: var(--text-secondary); margin-bottom: 2rem;">${post.content}</p>` : ''}
+                    ${post.content ? `<p style="font-size: 1.1rem; line-height: 1.8; color: var(--text-secondary); margin-bottom: 2rem;">${safePostContent}</p>` : ''}
                     
                     ${pollHTML}
                     
@@ -4041,11 +4067,12 @@
                 
                 let pollHTML = '';
                 post.pollOptions.forEach((option, idx) => {
+                    const safeOptionText = escapeHtml(option.text);
                     const percentage = post.totalVotes > 0 ? Math.round((option.votes / post.totalVotes) * 100) : 0;
                     pollHTML += `
                         <div style="margin-bottom: 0.75rem;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-                                <span style="font-weight: 500;">${option.text}</span>
+                                <span style="font-weight: 500;">${safeOptionText}</span>
                                 <button onclick="votePoll(${post.id}, ${idx}); event.stopPropagation();" 
                                         style="padding: 0.4rem 1rem; background: var(--accent-primary); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 0.85rem;">
                                     Vote
@@ -4060,18 +4087,23 @@
                         </div>
                     `;
                 });
+
+                const safePostAvatar = escapeHtml(post.avatar);
+                const safePostAuthor = escapeHtml(post.author);
+                const safePostCategory = escapeHtml(post.category);
+                const safePostTitle = escapeHtml(post.title);
                 
                 postDiv.innerHTML = `
                     <div class="post-header">
                         <div class="post-author">
-                            <div class="post-avatar">${post.avatar}</div>
+                            <div class="post-avatar">${safePostAvatar}</div>
                             <div class="post-author-info">
-                                <h4>${post.author}</h4>
-                                <div class="post-meta">${getTimeAgo(post.timestamp)} • ${post.category}</div>
+                                <h4>${safePostAuthor}</h4>
+                                <div class="post-meta">${getTimeAgo(post.timestamp)} • ${safePostCategory}</div>
                             </div>
                         </div>
                     </div>
-                    <h3 class="post-title">${post.title}</h3>
+                    <h3 class="post-title">${safePostTitle}</h3>
                     <div style="margin: 1.5rem 0;">
                         ${pollHTML}
                     </div>
@@ -4084,19 +4116,24 @@
             } else {
                 // Regular post
                 postDiv.onclick = () => openForumPost(post.id);
+                const safePostAvatar = escapeHtml(post.avatar);
+                const safePostAuthor = escapeHtml(post.author);
+                const safePostCategory = escapeHtml(post.category);
+                const safePostTitle = escapeHtml(post.title);
+                const safePostContent = escapeHtml(post.content);
                 
                 postDiv.innerHTML = `
                     <div class="post-header">
                         <div class="post-author">
-                            <div class="post-avatar">${post.avatar}</div>
+                            <div class="post-avatar">${safePostAvatar}</div>
                             <div class="post-author-info">
-                                <h4>${post.author}</h4>
-                                <div class="post-meta">${getTimeAgo(post.timestamp)} • ${post.category}</div>
+                                <h4>${safePostAuthor}</h4>
+                                <div class="post-meta">${getTimeAgo(post.timestamp)} • ${safePostCategory}</div>
                             </div>
                         </div>
                     </div>
-                    <h3 class="post-title">${post.title}</h3>
-                    <p class="post-content">${post.content}</p>
+                    <h3 class="post-title">${safePostTitle}</h3>
+                    <p class="post-content">${safePostContent}</p>
                     <div class="post-stats">
                         <div class="stat">👍 ${post.likes} Likes</div>
                         <div class="stat">💬 ${post.comments} Comments</div>
@@ -4214,17 +4251,18 @@
             
             pollHTML += '<div id="pollContainer" style="display: none; background: var(--bg-secondary); padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem;">';
             pollHTML += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">`;
-            pollHTML += `<h3 style="font-family: 'Oswald', sans-serif; font-size: 1.2rem; margin: 0; color: #C8102E;">POLL: ${poll.title.replace('📊 POLL: ', '')}</h3>`;
+            pollHTML += `<h3 style="font-family: 'Oswald', sans-serif; font-size: 1.2rem; margin: 0; color: #C8102E;">POLL: ${escapeHtml(poll.title.replace('📊 POLL: ', ''))}</h3>`;
             pollHTML += `<button onclick="togglePoll('${containerSelector}')" style="padding: 0.5rem 1rem; background: var(--bg-tertiary); border: none; border-radius: 6px; color: var(--text-primary); cursor: pointer; font-size: 0.85rem; font-weight: 600;">Hide</button>`;
             pollHTML += `</div>`;
             pollHTML += `<div id="pollContent">`;
             
             poll.pollOptions.forEach((option, idx) => {
+                const safeOptionText = escapeHtml(option.text);
                 const percentage = poll.totalVotes > 0 ? Math.round((option.votes / poll.totalVotes) * 100) : 0;
                 pollHTML += `
                     <div style="margin-bottom: 0.75rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-                            <span style="font-weight: 500; font-size: 0.95rem;">${option.text}</span>
+                            <span style="font-weight: 500; font-size: 0.95rem;">${safeOptionText}</span>
                             <button onclick="voteVideoPoll(${pollId}, ${idx}, '${videoId}', '${containerSelector}')" 
                                     style="padding: 0.4rem 1rem; background: var(--accent-primary); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 0.85rem;">
                                 Vote
@@ -4763,10 +4801,12 @@
             } catch (error) {
                 console.error('Auth0 initialization error:', error);
                 // Fallback to localStorage-based auth for testing
-                const savedUser = localStorage.getItem('blazetv_user');
-                if (savedUser) {
-                    currentUser = JSON.parse(savedUser);
-                    updateUIForLoggedInUser();
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                    const savedUser = localStorage.getItem('blazetv_user');
+                    if (savedUser) {
+                        currentUser = JSON.parse(savedUser);
+                        updateUIForLoggedInUser();
+                    }
                 }
             }
         }

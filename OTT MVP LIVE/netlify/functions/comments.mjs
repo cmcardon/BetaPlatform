@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 
 const store = getStore("comments");
+const ALLOWED_TIP_AMOUNTS = new Set([0, 5, 20, 50]);
 
 function json(statusCode, body) {
   return {
@@ -27,7 +28,8 @@ function getPinDurationMs(tipAmount) {
 }
 
 function normalizeComment(input) {
-  const tipAmount = Math.max(0, Number(input.tipAmount) || 0);
+  const requestedTipAmount = Math.max(0, Number(input.tipAmount) || 0);
+  const tipAmount = ALLOWED_TIP_AMOUNTS.has(requestedTipAmount) ? requestedTipAmount : 0;
   const timestamp = input.timestamp || new Date().toISOString();
   const pinDurationMs = getPinDurationMs(tipAmount);
   const pinnedUntil = pinDurationMs
