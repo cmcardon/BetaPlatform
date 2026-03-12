@@ -2999,6 +2999,7 @@
             renderLiveSchedule();
             renderSchedulePage();
             loadLiveSchedule();
+            prepareCarouselCards();
             hydrateCarouselTitles();
             renderWatchlistRow();
             applyCommentVisibility('live');
@@ -3292,7 +3293,47 @@
             return match ? match[1] : '';
         }
 
+        function extractHostFromCard(card) {
+            const metaFirstSpan = card.querySelector('.card-meta span');
+            if (metaFirstSpan && metaFirstSpan.textContent.trim()) {
+                return metaFirstSpan.textContent.trim();
+            }
+
+            const onclickValue = card.getAttribute('onclick') || '';
+            const match = onclickValue.match(/playYouTubeVideo\('[^']+', '([^']+)'\)/);
+            return match ? match[1] : 'BlazeTV';
+        }
+
+        function prepareCarouselCards(root = document) {
+            const cards = Array.from(root.querySelectorAll('.content-card:not(.live-card)'));
+
+            cards.forEach((card) => {
+                const titleElement = card.querySelector('.card-title');
+                const metaElement = card.querySelector('.card-meta');
+                if (!titleElement || !metaElement) return;
+
+                let seriesElement = card.querySelector('.card-series');
+                if (!seriesElement) {
+                    seriesElement = document.createElement('div');
+                    seriesElement.className = 'card-series';
+                    titleElement.insertAdjacentElement('beforebegin', seriesElement);
+                }
+
+                seriesElement.textContent = extractHostFromCard(card);
+
+                if (!metaElement.dataset.prepared) {
+                    metaElement.innerHTML = `
+                        <span>Loading date</span>
+                        <span>|</span>
+                        <span>Loading runtime</span>
+                    `;
+                    metaElement.dataset.prepared = 'true';
+                }
+            });
+        }
+
         function hydrateCarouselTitles(root = document) {
+            prepareCarouselCards(root);
             const cards = Array.from(root.querySelectorAll('.content-card:not(.live-card)'));
 
             cards.forEach(async (card) => {
