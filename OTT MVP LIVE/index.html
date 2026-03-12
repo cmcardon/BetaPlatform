@@ -1660,6 +1660,7 @@
             <nav class="desktop-nav">
                 <a href="#" class="active nav-link" data-page="home" onclick="showPage('home'); stopAllVideos(); return false;">Home</a>
                 <a href="#" class="nav-link" data-page="live" onclick="showPage('live'); stopAllVideos(); return false;">Live</a>
+                <a href="#" class="nav-link" data-page="schedule" onclick="showPage('schedule'); stopAllVideos(); return false;">Schedule</a>
                 <a href="#" class="nav-link" data-page="shows" onclick="showPage('shows'); stopAllVideos(); return false;">Shows</a>
                 <a href="#" class="nav-link" data-page="forum" onclick="showPage('forum'); stopAllVideos(); return false;">Forum</a>
             </nav>
@@ -1680,6 +1681,7 @@
             <nav class="mobile-nav">
                 <a href="#" class="active nav-link" data-page="home" onclick="showPage('home'); stopAllVideos(); toggleMobileMenu(); return false;">Home</a>
                 <a href="#" class="nav-link" data-page="live" onclick="showPage('live'); stopAllVideos(); toggleMobileMenu(); return false;">Live</a>
+                <a href="#" class="nav-link" data-page="schedule" onclick="showPage('schedule'); stopAllVideos(); toggleMobileMenu(); return false;">Schedule</a>
                 <a href="#" class="nav-link" data-page="shows" onclick="showPage('shows'); stopAllVideos(); toggleMobileMenu(); return false;">Shows</a>
                 <a href="#" class="nav-link" data-page="forum" onclick="showPage('forum'); stopAllVideos(); toggleMobileMenu(); return false;">Forum</a>
             </nav>
@@ -2693,6 +2695,17 @@
         </div>
     </div>
 
+    <!-- SCHEDULE PAGE -->
+    <div class="page" id="schedulePage" style="margin-top: 70px; background: var(--bg-primary); min-height: 100vh; padding: 2rem 4%;">
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div style="margin-bottom: 2rem;">
+                <h1 style="font-family: 'Oswald', sans-serif; font-size: 2.3rem; margin-bottom: 0.5rem;">Programming Schedule</h1>
+                <p style="color: var(--text-secondary); max-width: 760px;">See what is airing now, what is coming up next, and how BlazeTV programming is structured across the evening lineup.</p>
+            </div>
+            <div id="schedulePageContent" style="display: grid; gap: 1rem;"></div>
+        </div>
+    </div>
+
     <!-- FORUM PAGE -->
     <div class="forum-page page" id="forumPage">
         <div class="forum-header">
@@ -2939,6 +2952,7 @@
             fetchYouTubeTitle('G-TcuKoXzzI');
             startHeroRotation();
             renderLiveSchedule();
+            renderSchedulePage();
             renderWatchlistRow();
             applyCommentVisibility('live');
             applyCommentVisibility('vod');
@@ -3090,6 +3104,25 @@
                 </div>
                 ${upcoming}
             `;
+        }
+
+        function renderSchedulePage() {
+            const section = document.getElementById('schedulePageContent');
+            if (!section) return;
+
+            section.innerHTML = liveProgrammingSchedule.map((item, index) => `
+                <div style="background: ${index === 0 ? 'linear-gradient(135deg, rgba(255,0,45,0.18), rgba(255,51,85,0.08))' : 'var(--bg-secondary)'}; border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1.25rem 1.4rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                    <div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.35rem;">${escapeHtml(item.status)}</div>
+                        <div style="font-weight: 700; font-size: 1.15rem;">${escapeHtml(item.title)}</div>
+                        <div style="color: var(--text-secondary); margin-top: 0.2rem;">${escapeHtml(item.host)}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-family: 'Oswald', sans-serif; font-size: 1.45rem;">${escapeHtml(item.time)}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.9rem;">Central Time</div>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function renderRecommendedVideos(currentVideoId = '') {
@@ -3442,6 +3475,7 @@
             const pageMap = {
                 'home': 'homePage',
                 'live': 'livePage',
+                'schedule': 'schedulePage',
                 'shows': 'showsPage',
                 'forum': 'forumPage',
                 'postView': 'postViewPage'
@@ -3508,6 +3542,10 @@
 
             if (pageName === 'home') {
                 renderWatchlistRow();
+            }
+
+            if (pageName === 'schedule') {
+                renderSchedulePage();
             }
         }
 
