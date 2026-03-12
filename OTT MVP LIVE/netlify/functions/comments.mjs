@@ -19,15 +19,30 @@ function getCommentsKey(contentId) {
   return `content/${String(contentId).replace(/[^a-zA-Z0-9_-]/g, "_")}.json`;
 }
 
+function getPinDurationMs(tipAmount) {
+  if (tipAmount >= 50) return 60 * 60 * 1000;
+  if (tipAmount >= 20) return 30 * 60 * 1000;
+  if (tipAmount >= 5) return 10 * 60 * 1000;
+  return 0;
+}
+
 function normalizeComment(input) {
+  const tipAmount = Math.max(0, Number(input.tipAmount) || 0);
+  const timestamp = input.timestamp || new Date().toISOString();
+  const pinDurationMs = getPinDurationMs(tipAmount);
+  const pinnedUntil = pinDurationMs
+    ? new Date(new Date(timestamp).getTime() + pinDurationMs).toISOString()
+    : null;
+
   return {
     id: input.id || Date.now(),
     userId: String(input.userId || "").slice(0, 200),
     displayName: String(input.displayName || "BlazeTV Fan").slice(0, 80),
     avatar: String(input.avatar || "🔥").slice(0, 8),
     text: String(input.text || "").trim().slice(0, 1000),
-    tipAmount: Math.max(0, Number(input.tipAmount) || 0),
-    timestamp: input.timestamp || new Date().toISOString()
+    tipAmount,
+    timestamp,
+    pinnedUntil
   };
 }
 

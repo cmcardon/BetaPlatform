@@ -600,6 +600,16 @@
             background: #4CAF50;
         }
 
+        .badge.pinned {
+            background: #FFD700;
+            color: #000;
+        }
+
+        .chat-message.super-chat-pinned {
+            position: relative;
+            box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.35), 0 10px 24px rgba(0, 0, 0, 0.35);
+        }
+
         .chat-text {
             font-size: 0.9rem;
             color: var(--text-secondary);
@@ -3357,6 +3367,40 @@
             return comments;
         }
 
+        function getPinDurationMs(tipAmount) {
+            if (tipAmount >= 50) return 60 * 60 * 1000;
+            if (tipAmount >= 20) return 30 * 60 * 1000;
+            if (tipAmount >= 5) return 10 * 60 * 1000;
+            return 0;
+        }
+
+        function getPinnedUntil(timestamp, tipAmount) {
+            const pinDurationMs = getPinDurationMs(tipAmount);
+            if (!pinDurationMs || !timestamp) return null;
+
+            return new Date(new Date(timestamp).getTime() + pinDurationMs).toISOString();
+        }
+
+        function isActivelyPinned(comment) {
+            if (!comment || !comment.pinnedUntil) return false;
+            return new Date(comment.pinnedUntil).getTime() > Date.now();
+        }
+
+        function formatPinnedTimeRemaining(comment) {
+            if (!isActivelyPinned(comment)) return '';
+
+            const remainingMs = new Date(comment.pinnedUntil).getTime() - Date.now();
+            const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
+
+            if (remainingMinutes >= 60) {
+                const hours = Math.floor(remainingMinutes / 60);
+                const minutes = remainingMinutes % 60;
+                return minutes ? `${hours}h ${minutes}m left` : `${hours}h left`;
+            }
+
+            return `${remainingMinutes}m left`;
+        }
+
         function startLiveChatPolling() {
             stopLiveChatPolling();
 
@@ -3376,6 +3420,13 @@
 
         function sortCommentsByTip(comments) {
             return comments.sort((a, b) => {
+                const aPinned = isActivelyPinned(a);
+                const bPinned = isActivelyPinned(b);
+
+                if (aPinned !== bPinned) {
+                    return aPinned ? -1 : 1;
+                }
+
                 const tipA = a.tipAmount || 0;
                 const tipB = b.tipAmount || 0;
                 
@@ -3478,6 +3529,8 @@
             try {
                 const isBlocked = blockedUsers && blockedUsers.includes(comment.userId);
                 const isVOD = container.id === 'vodComments';
+                const isPinned = isActivelyPinned(comment);
+                const pinnedTimeLabel = formatPinnedTimeRemaining(comment);
                 
                 console.log('Creating message div for:', isVOD ? 'VOD' : 'Live Chat');
                 
@@ -3518,6 +3571,7 @@
                     // Live chat styling
                     messageDiv.className = 'chat-message' + 
                         (comment.tipAmount > 0 ? ' super-chat' : '') +
+                        (isPinned ? ' super-chat-pinned' : '') +
                         (isBlocked ? ' blocked-comment' : '');
                     
                     messageDiv.innerHTML = `
@@ -3526,7 +3580,7 @@
                         <div class="chat-content">
                             <div class="chat-user">
                                 ${comment.displayName || 'Anonymous'}
-                                ${comment.tipAmount > 0 ? '<span class="badge pinned">PINNED</span>' : ''}
+                                ${comment.tipAmount > 0 ? `<span class="badge pinned">${isPinned ? `PINNED ${pinnedTimeLabel}` : 'SUPER CHAT'}</span>` : ''}
                                 ${!isBlocked && comment.userId !== (currentUser?.email || '') ? 
                                     `<button class="block-user-btn" onclick="blockUser('${comment.userId || ''}')">Block</button>` : ''}
                             </div>
@@ -3593,6 +3647,8 @@
                 tipAmount: selectedSuperChat || 0,
                 timestamp: new Date().toISOString()
             };
+
+            comment.pinnedUntil = getPinnedUntil(comment.timestamp, comment.tipAmount);
             
             console.log('Created comment:', comment);
             
