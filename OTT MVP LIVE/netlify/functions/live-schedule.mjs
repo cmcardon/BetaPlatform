@@ -3,16 +3,15 @@ const BLAZETV_LIVE_ASSET_ID = "5e3bad54c1885760b806a3a5";
 const UPSTREAM_URL = `https://ga-prod-api.powr.tv/v2/sites/${BLAZETV_SITE_UID}/assets/${BLAZETV_LIVE_ASSET_ID}/live`;
 
 function json(statusCode, body) {
-  return {
-    statusCode,
+  return new Response(JSON.stringify(body), {
+    status: statusCode,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type"
-    },
-    body: JSON.stringify(body)
-  };
+    }
+  });
 }
 
 function normalizeEvent(event) {
@@ -32,11 +31,11 @@ function normalizeEvent(event) {
 }
 
 export default async (request) => {
-  if (request.httpMethod === "OPTIONS") {
+  if (request.method === "OPTIONS") {
     return json(204, {});
   }
 
-  if (request.httpMethod !== "GET") {
+  if (request.method !== "GET") {
     return json(405, { error: "Method not allowed" });
   }
 

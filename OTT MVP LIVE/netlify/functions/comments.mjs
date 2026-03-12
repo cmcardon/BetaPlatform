@@ -4,16 +4,15 @@ const store = getStore("comments");
 const ALLOWED_TIP_AMOUNTS = new Set([0, 5, 20, 50]);
 
 function json(statusCode, body) {
-  return {
-    statusCode,
+  return new Response(JSON.stringify(body), {
+    status: statusCode,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type"
-    },
-    body: JSON.stringify(body)
-  };
+    }
+  });
 }
 
 function getCommentsKey(contentId) {
@@ -49,18 +48,18 @@ function normalizeComment(input) {
 }
 
 export default async (request) => {
-  if (request.httpMethod === "OPTIONS") {
+  if (request.method === "OPTIONS") {
     return json(204, {});
   }
 
-  const contentId = request.queryStringParameters?.contentId;
+  const contentId = new URL(request.url).searchParams.get("contentId");
   if (!contentId) {
     return json(400, { error: "Missing contentId" });
   }
 
   const key = getCommentsKey(contentId);
 
-  if (request.httpMethod === "GET") {
+  if (request.method === "GET") {
     const comments = await store.get(key, {
       type: "json",
       consistency: "strong"
@@ -69,11 +68,11 @@ export default async (request) => {
     return json(200, { comments: Array.isArray(comments) ? comments : [] });
   }
 
-  if (request.httpMethod === "POST") {
+  if (request.method === "POST") {
     let payload;
 
     try {
-      payload = JSON.parse(request.body || "{}");
+      payload = await request.json();
     } catch {
       return json(400, { error: "Invalid JSON body" });
     }

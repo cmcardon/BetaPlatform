@@ -1,14 +1,13 @@
 function json(statusCode, body) {
-  return {
-    statusCode,
+  return new Response(JSON.stringify(body), {
+    status: statusCode,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type"
-    },
-    body: JSON.stringify(body)
-  };
+    }
+  });
 }
 
 function matchValue(pattern, source) {
@@ -17,15 +16,15 @@ function matchValue(pattern, source) {
 }
 
 export default async (request) => {
-  if (request.httpMethod === "OPTIONS") {
+  if (request.method === "OPTIONS") {
     return json(204, {});
   }
 
-  if (request.httpMethod !== "GET") {
+  if (request.method !== "GET") {
     return json(405, { error: "Method not allowed" });
   }
 
-  const videoId = String(request.queryStringParameters?.videoId || "").trim();
+  const videoId = String(new URL(request.url).searchParams.get("videoId") || "").trim();
   if (!/^[a-zA-Z0-9_-]{6,20}$/.test(videoId)) {
     return json(400, { error: "Missing or invalid videoId" });
   }
