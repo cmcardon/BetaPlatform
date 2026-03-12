@@ -2705,10 +2705,13 @@
 
     <!-- SCHEDULE PAGE -->
     <div class="page" id="schedulePage" style="margin-top: 70px; background: var(--bg-primary); min-height: 100vh; padding: 2rem 4%;">
-        <div style="max-width: 1200px; margin: 0 auto;">
-            <div style="margin-bottom: 2rem;">
-                <h1 style="font-family: 'Oswald', sans-serif; font-size: 2.3rem; margin-bottom: 0.5rem;">Programming Schedule</h1>
-                <p style="color: var(--text-secondary); max-width: 760px;">See what is airing now, what is coming up next, and how BlazeTV programming is structured across the evening lineup.</p>
+            <div style="max-width: 1200px; margin: 0 auto;">
+                <div style="margin-bottom: 2rem;">
+                    <h1 style="font-family: 'Oswald', sans-serif; font-size: 2.3rem; margin-bottom: 0.5rem;">Programming Schedule</h1>
+                    <p style="color: var(--text-secondary); max-width: 760px;">See what is airing now, what is coming up next, and how BlazeTV programming is structured across the evening lineup.</p>
+                </div>
+            <div style="margin-bottom: 1.25rem;">
+                <button class="btn-primary" onclick="showPage('live')" style="padding: 0.95rem 1.5rem;">▶ Watch Live</button>
             </div>
             <div id="schedulePageContent" style="display: grid; gap: 1rem;"></div>
         </div>
@@ -2966,6 +2969,7 @@
             startHeroRotation();
             renderLiveSchedule();
             renderSchedulePage();
+            loadLiveSchedule();
             renderWatchlistRow();
             applyCommentVisibility('live');
             applyCommentVisibility('vod');
@@ -2982,15 +2986,167 @@
             { id: 'L0ZxJS9gM8E', title: 'The Liz Wheeler Show', host: 'Liz Wheeler' }
         ];
 
-        const liveProgrammingSchedule = [
-            { time: 'Now', title: 'BlazeTV Live Stream', host: 'BlazeTV', status: 'Live' },
-            { time: '6:00 PM', title: 'The Glenn Beck Program', host: 'Glenn Beck', status: 'Next' },
-            { time: '7:00 PM', title: 'Fearless with Jason Whitlock', host: 'Jason Whitlock', status: 'Upcoming' },
-            { time: '8:00 PM', title: 'The Liz Wheeler Show', host: 'Liz Wheeler', status: 'Upcoming' },
-            { time: '9:00 PM', title: 'Sara Gonzales Unfiltered', host: 'Sara Gonzales', status: 'Upcoming' }
+        const LIVE_SCHEDULE_API_URL = '/.netlify/functions/live-schedule';
+        const SCHEDULE_TIMEZONE = 'America/Chicago';
+        const fallbackProgrammingSchedule = buildFallbackProgrammingSchedule();
+        const showHostMatches = [
+            { match: 'The Glenn Beck Program', host: 'Glenn Beck' },
+            { match: 'Fearless with Jason Whitlock', host: 'Jason Whitlock' },
+            { match: 'The Liz Wheeler Show', host: 'Liz Wheeler' },
+            { match: 'Sara Gonzales Unfiltered', host: 'Sara Gonzales' },
+            { match: 'Stu Does America', host: 'Stu Burguiere' },
+            { match: 'Relatable with Allie Beth Stuckey', host: 'Allie Beth Stuckey' },
+            { match: 'Pat Gray Unleashed', host: 'Pat Gray' },
+            { match: 'The Steve Deace Show', host: 'Steve Deace' },
+            { match: 'The Auron MacIntyre Show', host: 'Auron MacIntyre' },
+            { match: 'The John Doyle Show', host: 'John Doyle' },
+            { match: 'Rufo & Lomez', host: 'Rufo and Lomez' },
+            { match: 'Nicole Shanahan', host: 'Nicole Shanahan' },
+            { match: 'Blaze News Tonight', host: 'Blaze News' }
         ];
+        let liveProgrammingSchedule = [];
+        let liveScheduleSource = 'fallback';
+        let liveScheduleLoaded = false;
+        let liveScheduleLoadPromise = null;
         
         let currentHeroIndex = 0;
+
+        function buildFallbackProgrammingSchedule() {
+            const base = new Date();
+            base.setMinutes(0, 0, 0);
+
+            const lineup = [
+                { id: 'fallback-glenn', offsetHours: 0, title: 'The Glenn Beck Program', host: 'Glenn Beck' },
+                { id: 'fallback-fearless', offsetHours: 1, title: 'Fearless with Jason Whitlock', host: 'Jason Whitlock' },
+                { id: 'fallback-liz', offsetHours: 2, title: 'The Liz Wheeler Show', host: 'Liz Wheeler' },
+                { id: 'fallback-sara', offsetHours: 3, title: 'Sara Gonzales Unfiltered', host: 'Sara Gonzales' },
+                { id: 'fallback-stu', offsetHours: 4, title: 'Stu Does America', host: 'Stu Burguiere' }
+            ];
+
+            return lineup.map(item => ({
+                id: item.id,
+                start: new Date(base.getTime() + (item.offsetHours * 60 * 60 * 1000)).toISOString(),
+                title: item.title,
+                host: item.host
+            }));
+        }
+
+        function formatScheduleTime(isoString) {
+            const date = new Date(isoString);
+            if (Number.isNaN(date.getTime())) {
+                return 'TBD';
+            }
+
+            return date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZone: SCHEDULE_TIMEZONE
+            });
+        }
+
+        function getScheduleStatus(schedule, index) {
+            const now = Date.now();
+            const currentStart = new Date(schedule[index].start).getTime();
+            const nextStart = schedule[index + 1] ? new Date(schedule[index + 1].start).getTime() : Infinity;
+
+            if (currentStart <= now && now < nextStart) {
+                return 'Now';
+            }
+
+            if (currentStart > now) {
+                const hasEarlierFutureEntry = schedule.slice(0, index).some(item => new Date(item.start).getTime() > now);
+                return hasEarlierFutureEntry ? 'Upcoming' : 'Next';
+            }
+
+            return index === 0 ? 'Now' : 'Replay';
+        }
+
+        function cleanScheduleTitle(title) {
+            return String(title || '')
+                .replace(/^LIVE\s*\|\s*/i, '')
+                .replace(/\s*\|\s*Replay$/i, '')
+                .trim();
+        }
+
+        function inferScheduleHost(title) {
+            const normalizedTitle = cleanScheduleTitle(title);
+            const match = showHostMatches.find(item => normalizedTitle.includes(item.match));
+            return match ? match.host : 'BlazeTV';
+        }
+
+        function normalizeScheduleItems(items) {
+            const normalized = items
+                .map(item => {
+                    const start = item.start || item.liveEvent?.start;
+                    const title = cleanScheduleTitle(item.title);
+
+                    return {
+                        id: String(item.id || item.uid || item._id?.uid || title || start || Math.random()),
+                        start,
+                        title,
+                        host: item.host || inferScheduleHost(title),
+                        description: String(item.description || '').trim(),
+                        thumbnail: String(item.thumbnail || item.customThumbnail || item.metadata?.thumbnails?.maxres || '').trim()
+                    };
+                })
+                .filter(item => item.start && item.title)
+                .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+                .slice(0, 12);
+
+            return normalized.map((item, index, schedule) => ({
+                ...item,
+                time: formatScheduleTime(item.start),
+                status: getScheduleStatus(schedule, index)
+            }));
+        }
+
+        function getRenderableSchedule() {
+            return Array.isArray(liveProgrammingSchedule) && liveProgrammingSchedule.length
+                ? liveProgrammingSchedule
+                : normalizeScheduleItems(fallbackProgrammingSchedule);
+        }
+
+        async function loadLiveSchedule() {
+            if (liveScheduleLoadPromise) {
+                return liveScheduleLoadPromise;
+            }
+
+            liveScheduleLoadPromise = (async () => {
+                try {
+                    const response = await fetch(LIVE_SCHEDULE_API_URL, {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Schedule request failed with ${response.status}`);
+                    }
+
+                    const payload = await response.json();
+                    const schedule = normalizeScheduleItems(Array.isArray(payload.events) ? payload.events : []);
+
+                    if (schedule.length > 0) {
+                        liveProgrammingSchedule = schedule;
+                        liveScheduleSource = 'live';
+                        liveScheduleLoaded = true;
+                    } else {
+                        throw new Error('Schedule feed was empty');
+                    }
+                } catch (error) {
+                    console.warn('Falling back to prototype schedule:', error);
+                    liveProgrammingSchedule = normalizeScheduleItems(fallbackProgrammingSchedule);
+                    liveScheduleSource = 'fallback';
+                    liveScheduleLoaded = true;
+                }
+
+                renderLiveSchedule();
+                renderSchedulePage();
+                return liveProgrammingSchedule;
+            })();
+
+            return liveScheduleLoadPromise;
+        }
 
         function getWatchlistKey() {
             return currentUser ? `blazetv_watchlist_${currentUser.email}` : 'blazetv_watchlist_guest';
@@ -3103,8 +3259,10 @@
             const section = document.getElementById('liveScheduleSection');
             if (!section) return;
 
-            const nowShowing = liveProgrammingSchedule[0];
-            const upcoming = liveProgrammingSchedule.slice(1).map(item => `
+            const schedule = getRenderableSchedule();
+            const nowShowing = schedule.find(item => item.status === 'Now') || schedule[0];
+            const upcomingItems = schedule.filter(item => item.id !== nowShowing?.id).slice(0, 4);
+            const upcoming = upcomingItems.map(item => `
                 <div style="display: flex; justify-content: space-between; gap: 1rem; padding: 0.65rem 0; border-top: 1px solid rgba(255,255,255,0.06);">
                     <div>
                         <div style="font-weight: 600;">${escapeHtml(item.title)}</div>
@@ -3118,13 +3276,16 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
                     <div>
                         <div style="font-family: 'Oswald', sans-serif; font-size: 1.2rem;">Programming Guide</div>
-                        <div style="color: var(--text-secondary); font-size: 0.9rem;">What is live now and what is coming up next</div>
+                        <div style="color: var(--text-secondary); font-size: 0.9rem;">${liveScheduleSource === 'live' ? 'Pulled from the current BlazeTV platform lineup' : 'Fallback prototype lineup while the live feed loads'}</div>
                     </div>
-                    <div style="padding: 0.35rem 0.75rem; border-radius: 999px; background: rgba(255,0,45,0.14); color: var(--text-primary); font-size: 0.85rem;">
-                        Now: ${escapeHtml(nowShowing.title)}
+                    <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                        <button class="btn-primary" onclick="showPage('live')" style="padding: 0.7rem 1rem; font-size: 0.9rem;">▶ Watch Live</button>
+                        <div style="padding: 0.35rem 0.75rem; border-radius: 999px; background: rgba(255,0,45,0.14); color: var(--text-primary); font-size: 0.85rem;">
+                            ${nowShowing ? `${escapeHtml(nowShowing.status)}: ${escapeHtml(nowShowing.title)}` : 'Schedule loading'}
+                        </div>
                     </div>
                 </div>
-                ${upcoming}
+                ${upcoming || '<div style="padding: 0.85rem 0; color: var(--text-secondary); border-top: 1px solid rgba(255,255,255,0.06);">Schedule is loading. Please check back in a moment.</div>'}
             `;
         }
 
@@ -3132,19 +3293,32 @@
             const section = document.getElementById('schedulePageContent');
             if (!section) return;
 
-            section.innerHTML = liveProgrammingSchedule.map((item, index) => `
-                <div style="background: ${index === 0 ? 'linear-gradient(135deg, rgba(255,0,45,0.18), rgba(255,51,85,0.08))' : 'var(--bg-secondary)'}; border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1.25rem 1.4rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            const schedule = getRenderableSchedule();
+            const upcomingSchedule = schedule.filter(item => item.status !== 'Replay');
+
+            section.innerHTML = `
+                <div style="background: linear-gradient(135deg, rgba(255,0,45,0.16), rgba(255,122,0,0.08)); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
                     <div>
-                        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.35rem;">${escapeHtml(item.status)}</div>
-                        <div style="font-weight: 700; font-size: 1.15rem;">${escapeHtml(item.title)}</div>
-                        <div style="color: var(--text-secondary); margin-top: 0.2rem;">${escapeHtml(item.host)}</div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.35rem;">Live Now</div>
+                        <div style="font-weight: 700; font-size: 1.25rem;">BlazeTV Live</div>
+                        <div style="color: var(--text-secondary); margin-top: 0.2rem;">Launch the stream and follow the current lineup below.</div>
                     </div>
-                    <div style="text-align: right;">
-                        <div style="font-family: 'Oswald', sans-serif; font-size: 1.45rem;">${escapeHtml(item.time)}</div>
-                        <div style="color: var(--text-secondary); font-size: 0.9rem;">Central Time</div>
-                    </div>
+                    <button class="btn-primary" onclick="showPage('live')" style="padding: 0.95rem 1.5rem;">▶ Watch Live</button>
                 </div>
-            `).join('');
+                ${upcomingSchedule.map((item, index) => `
+                    <div style="background: ${item.status === 'Now' ? 'linear-gradient(135deg, rgba(255,0,45,0.18), rgba(255,51,85,0.08))' : 'var(--bg-secondary)'}; border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 1.25rem 1.4rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                        <div>
+                            <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.35rem;">${escapeHtml(item.status)}</div>
+                            <div style="font-weight: 700; font-size: 1.15rem;">${escapeHtml(item.title)}</div>
+                            <div style="color: var(--text-secondary); margin-top: 0.2rem;">${escapeHtml(item.host)}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-family: 'Oswald', sans-serif; font-size: 1.45rem;">${escapeHtml(item.time)}</div>
+                            <div style="color: var(--text-secondary); font-size: 0.9rem;">Central Time</div>
+                        </div>
+                    </div>
+                `).join('')}
+            `;
         }
 
         function renderRecommendedVideos(currentVideoId = '') {
@@ -3538,6 +3712,7 @@
                 loadCommentsForVideo(currentContentId);
                 startLiveChatPolling();
                 renderLiveSchedule();
+                loadLiveSchedule();
                 updateSaveButtons();
                 applyCommentVisibility('live');
                 
@@ -3568,6 +3743,7 @@
 
             if (pageName === 'schedule') {
                 renderSchedulePage();
+                loadLiveSchedule();
             }
         }
 
